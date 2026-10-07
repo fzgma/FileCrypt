@@ -1,0 +1,70 @@
+name: Botan PoC
+on:
+  push:
+    branches: ['poc/**']
+  pull_request:
+    paths: ['poc/**', '.github/workflows/botan-poc.yml']
+  workflow_dispatch:
+
+jobs:
+  mingw:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-libbotan
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+      - name: Build and test
+        shell: msys2 {0}
+        run: |
+          cmake -S poc -B build-poc -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-poc
+          ctest --test-dir build-poc --output-on-failure
+
+  source-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+          - os: windows-latest
+            compiler: msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: matrix.compiler == 'msvc'
+      - name: Fetch Botan source
+        run: git clone --depth 1 --branch 3.13.0 https://github.com/randombit/botan.git build-botan-source
+      - name: Build Botan (same library version as local validation)
+        working-directory: build-botan-source
+        run: |
+          python configure.py --cc=${{ matrix.compiler }} --build-tool=ninja --prefix=${{ github.workspace }}/build-botan-install --without-documentation
+          ninja
+          ninja install
+      - name: Build and test (Linux)
+        if: matrix.compiler == 'gcc'
+        run: |
+          cmake -S poc -B build-poc -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/build-botan-install"
+          cmake --build build-poc
+          LD_LIBRARY_PATH="$GITHUB_WORKSPACE/build-botan-install/lib" ctest --test-dir build-poc --output-on-failure
+      - name: Build and test (MSVC)
+        if: matrix.compiler == 'msvc'
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:GITHUB_WORKSPACE/build-botan-install/bin;$env:GITHUB_WORKSPACE/build-botan-install/lib;" + $env:PATH
+          cmake -S poc -B build-poc -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE/build-botan-install"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-poc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build-poc --output-on-failure
