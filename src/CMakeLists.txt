@@ -3,6 +3,7 @@ add_library(filecrypt_format
     format/detect.cpp
     format/v1/header.cpp
     format/v1/registry.cpp
+    format/v1/aad.cpp
     format/v1/metadata.cpp)
 add_library(FileCrypt::Format ALIAS filecrypt_format)
 target_include_directories(filecrypt_format PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -21,3 +22,5 @@ target_include_directories(filecrypt_app PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(filecrypt_app PRIVATE FileCrypt::Format FileCrypt::IO)
 target_compile_features(filecrypt_app PUBLIC cxx_std_23)
 target_compile_options(filecrypt_app PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+
+add_subdirectory(cli)

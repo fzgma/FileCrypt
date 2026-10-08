@@ -69,10 +69,15 @@ tests/
 ```
 
 Application 读取 `FCRY + uint16 Version` 后分发，不能先把未知版本按 v1 Header 解析。
-v1 的字段布局、Registry 和未来 AAD 实现属于 `filecrypt::format::v1`；未来版本独立新增模块，
+v1 的字段布局、Registry 和 AAD 实现属于 `filecrypt::format::v1`；未来版本独立新增模块，
 不复用 v1 的裸协议编号或强制继承 v1 解析对象。当前不创建 v2 空目录。
 
 公开 `FileInfo` 只包含展示信息，不暴露 Header、Metadata 或协议偏移。
+
+`format/v1/aad.hpp` 提供两种 `build_aad` 入口：创建时序列化逻辑对象，
+读取时校验原始 Header 与完整 Metadata 后直接拼接原始字节。
+结果固定为 Header + Metadata[0 : TagOffset]，Padding 只包含一次，Tag 不参与。
+对象入口允许 Tag 占位，真实 Tag 写回后 AAD 不变；原始 Header 输入必须恰好 32 bytes。
 `SampleOptions` 显式携带创建版本，默认 v1；未知版本在文件创建前拒绝。
 CLI 只依赖 Application；Application 调用 Format 和 IO；Format、IO 彼此独立。
 

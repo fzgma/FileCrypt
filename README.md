@@ -2,6 +2,11 @@
 
 使用 C++23 编写的跨平台文件加密工具，目前已实现 Header、Metadata 编解码和公开格式信息读取。
 
+v1 格式层已提供 AAD 构造：`build_aad(header, metadata)` 用于逻辑对象，
+`build_aad(header_bytes, metadata_bytes)` 用于原始文件字节。两者均校验格式，
+包含 Header、Metadata 字段和 Padding，排除末尾 Tag；原始字节入口不重新编码认证内容。
+本功能只生成认证输入，尚未执行加密或认证。
+
 ## 构建与测试
 
 需要 CMake >= 3.24、C++23 编译器，不依赖 Botan 或 zstd。
@@ -9,13 +14,23 @@
 使用 Ninja，将整个项目构建到 `build/`：
 
 ```powershell
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
 Visual Studio 等多配置生成器使用 `cmake --build build --config Release`，
 测试时增加 `-C Release`；可执行文件一般位于 `build/Release/`。
+
+默认 `cmake --build build` 同时构建正式程序与单元测试，也可使用
+`cmake --build build --target build_all`。正式程序为 `build/filecrypt.exe`，
+单元测试程序位于 `build/tests/unit/`；多配置生成器会增加配置子目录。
+单独构建程序使用 `--target filecrypt`，单独构建单元测试使用 `--target unit_tests`。
+运行单元测试使用 `ctest --test-dir build -L unit --output-on-failure`，
+运行 CLI 集成测试使用 `ctest --test-dir build -L integration --output-on-failure`。
+
+编辑器也应执行 CMake 全量构建，不能只编译当前活动文件。新增 AAD 是格式库能力，
+不会改变现有 CLI 命令；是否包含该功能由 AAD 单元测试验证。
 
 `build/` 曾使用其他生成器时，在配置命令中增加 `--fresh` 重建 CMake 缓存。
 

@@ -6,14 +6,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(CTest)
 add_subdirectory(src)
 
-# CLI 位于构建目录根部，格式与文件操作由独立库提供。
-add_executable(filecrypt src/cli/main.cpp)
-target_link_libraries(filecrypt PRIVATE FileCrypt::App)
-target_compile_options(filecrypt PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
-
-include(CTest)
+# 默认构建包含正式程序及启用的测试；也提供明确的全量构建入口。
 if(BUILD_TESTING)
     add_subdirectory(tests)
+    add_custom_target(build_all DEPENDS filecrypt unit_tests)
+else()
+    add_custom_target(build_all DEPENDS filecrypt)
 endif()

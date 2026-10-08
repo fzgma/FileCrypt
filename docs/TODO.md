@@ -2,10 +2,8 @@
 
 只保留尚未完成的工作；构建、运行和已完成模块说明见 [README](../README.md) 与协议文档。
 
-## 下一步：AAD 与正式密码库接口
+## 下一步：正式密码库接口
 
-- 按 `PROTOCOL_BOUNDARIES_V1.md` 实现 AAD 构造：Header + Metadata[0 : TagOffset]，包含 Padding，排除 Tag。
-- 用固定字节向量测试 AAD，验证修改 Tag 不改变 AAD、修改 Header 或其他 Metadata 字段会改变 AAD。
 - 将 PoC 验证结果转化为独立的正式 Crypto 接口，不直接复制为最终实现。
 - 实现按 Metadata 参数重建 Argon2id 密钥、安全随机 Salt 与 Nonce、流式 AEAD 和独立 Tag。
 - 确定生产 KDF 默认参数和运行时资源策略，区分协议合法参数与本机允许执行的参数。
@@ -22,5 +20,4 @@
 
 - 实际运行 MSVC、Linux/GCC 构建和相同测试；当前仅验证 MinGW。
 - 完善 Windows Unicode 命令行路径与终端编码处理。
-- 整理编辑器任务，统一使用 CMake 构建。
 - 完善 CLI 错误分类、用户帮助与发布说明。
