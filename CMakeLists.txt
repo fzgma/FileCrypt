@@ -1,15 +1,19 @@
 cmake_minimum_required(VERSION 3.24)
 project(FileCrypt VERSION 0.1.0 LANGUAGES CXX)
 
-add_library(filecrypt_format src/format/header.cpp)
-target_include_directories(filecrypt_format PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_compile_features(filecrypt_format PUBLIC cxx_std_23)
-set_target_properties(filecrypt_format PROPERTIES CXX_EXTENSIONS OFF)
+# 项目统一使用标准 C++23，禁止静默降级和编译器扩展。
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_subdirectory(src)
+
+# CLI 位于构建目录根部，格式与文件操作由独立库提供。
+add_executable(filecrypt main.cpp)
+target_link_libraries(filecrypt PRIVATE FileCrypt::Format FileCrypt::IO)
+target_compile_options(filecrypt PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(header_test tests/format/header_test.cpp)
-    target_link_libraries(header_test PRIVATE filecrypt_format)
-    set_target_properties(header_test PROPERTIES CXX_EXTENSIONS OFF)
-    add_test(NAME format_header COMMAND header_test)
+    add_subdirectory(tests)
 endif()

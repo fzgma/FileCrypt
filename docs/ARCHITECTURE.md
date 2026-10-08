@@ -206,11 +206,11 @@ Metadata 根据当前容器类型和 Header Flags 变化。
 ```text
 Bit 14 = 0
     → 不压缩
-    → Metadata 不存在 Compression ID / Parameters
+    → Metadata 不存在 Compression ID / Parameters Length / Parameters
 
 Bit 14 = 1
     → 压缩
-    → Metadata 必须存在 Compression ID / Parameters
+    → Metadata 必须存在 Compression ID / Parameters Length / Parameters
 ```
 
 ### Single File
@@ -222,21 +222,22 @@ KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Padding
+Authentication Tag
 ```
 
 压缩：
 
 ```text
 Compression ID
+Compression Parameters Length
 Compression Parameters
 KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Padding
+Authentication Tag
 ```
 
 ### Directory Archive
@@ -249,8 +250,8 @@ KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Padding
+Authentication Tag
 ```
 
 压缩：
@@ -258,13 +259,14 @@ Padding
 ```text
 Index Length
 Compression ID
+Compression Parameters Length
 Compression Parameters
 KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Padding
+Authentication Tag
 ```
 
 因此 Metadata 不是一个对所有容器完全固定的 C++ struct。
@@ -307,6 +309,7 @@ MetadataLayout 负责计算：
 
 ```text
 Compression Parameters Size
+Compression Parameters Length Size（2 bytes，仅压缩时）
 KDF Parameters Size
 Salt Size
 Nonce Size
@@ -342,7 +345,7 @@ Metadata 对象保存实际 Metadata 数据，例如：
 
 ```text
 Index Length（仅 Directory）
-Compression ID / Parameters（仅 Flags.Bit14 = 1）
+Compression ID / Parameters Length / Parameters（仅 Flags.Bit14 = 1）
 KDF ID
 KDF Parameters
 Salt
@@ -366,13 +369,13 @@ MetadataWriter 负责：
 
 ```text
 Index Length（仅 Directory）
-Compression ID / Parameters（仅 Flags.Bit14 = 1）
+Compression ID / Parameters Length / Parameters（仅 Flags.Bit14 = 1）
 KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Zero Padding
+Authentication Tag
 ```
 
 实际存在的字段取决于当前 Container Type 和 Compression 状态。
@@ -473,6 +476,8 @@ KDF implementation
 ```
 
 MetadataLayout 和 KDF 执行流程都使用 KDF Registry。
+
+Derived Key Size 从 Algorithm Definition 的 Key Size 得到，不作为 KDF 独立固定值，也不单独写入 Metadata。v1 的编号和字段长度统一以 `REGISTRY_V1.md` 为准。
 
 ---
 

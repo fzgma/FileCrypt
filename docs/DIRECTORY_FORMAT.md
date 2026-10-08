@@ -50,8 +50,8 @@ Index Length
 同时，Header.Flags.Bit14 决定是否存在 Compression Metadata：
 
 ```text
-Bit14 = 0 → 无 Compression ID / Parameters
-Bit14 = 1 → 必须存在 Compression ID / Parameters
+Bit14 = 0 → 无 Compression ID / Parameters Length / Parameters
+Bit14 = 1 → 必须存在 Compression ID / Parameters Length / Parameters
 ```
 
 因此目录 Metadata 为：
@@ -64,8 +64,8 @@ KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Zero Padding
+Authentication Tag
 ```
 
 ### 压缩
@@ -73,13 +73,14 @@ Zero Padding
 ```text
 Index Length
 Compression ID
+Compression Parameters Length
 Compression Parameters
 KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Zero Padding
+Authentication Tag
 ```
 
 `Index Length` 是 Directory Archive 独有的 Metadata 字段。
@@ -576,20 +577,20 @@ Flags.Bit15 = 1
 File Type = 0x0000
 
 Flags.Bit14 = 0
-    → Metadata 无 Compression ID / Parameters
+    → Metadata 无 Compression ID / Parameters Length / Parameters
 
 Flags.Bit14 = 1
-    → Metadata 必须包含 Compression ID / Parameters
+    → Metadata 必须包含 Compression ID / Parameters Length / Parameters
 
 Metadata:
     Index Length
-    [Compression ID + Parameters]
+    [Compression ID + Parameters Length + Parameters]
     KDF ID
     KDF Parameters
     Salt
     Nonce
-    Authentication Tag
     Zero Padding
+    Authentication Tag
 
 Encrypted Raw:
     Index

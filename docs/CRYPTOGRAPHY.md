@@ -234,8 +234,7 @@ FileCrypt v1 的 AAD 固定定义为：
 ```text
 AAD =
     Header
-  + Metadata 中除 Authentication Tag 外的部分
-  + Metadata Padding
+  + Metadata[0 : TagOffset]
 ```
 
 因此以下字段会受到认证保护：
@@ -243,7 +242,7 @@ AAD =
 ```text
 Header
 Index Length（Directory）
-Compression ID / Parameters（如果启用）
+Compression ID / Parameters Length / Parameters（如果启用）
 KDF ID
 KDF Parameters
 Salt
@@ -251,7 +250,7 @@ Nonce
 Metadata Padding
 ```
 
-Authentication Tag 本身不参与自己的计算。
+Padding 位于 Tag 之前，已包含在 Metadata[0 : TagOffset] 中，不得重复追加。Authentication Tag 位于 Metadata 最后，不参与自己的计算。
 
 ---
 
@@ -279,6 +278,7 @@ Header 的 `Flags.Bit14` 只记录“是否压缩”，不记录具体压缩算�
 
 ```text
 Compression ID
+Compression Parameters Length
 Compression Parameters
 ```
 

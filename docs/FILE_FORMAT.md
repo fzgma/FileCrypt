@@ -281,15 +281,16 @@ Size：
 
 ```text
 0x0000 = N/A
-0x0001 ~ 0xFFFE = 由未来 File Type Registry 定义
-0xFFFF = Unknown / Invalid
+0x0001 ~ 0xFFFD = 由未来 File Type Registry 定义
+0xFFFE = Unknown
+0xFFFF = Invalid
 ```
 
 ### Single File
 
 当 `Flags.Bit15 = 0` 时，File Type 表示加密前原始文件的类型。
 
-正常情况下应使用未来 File Type Registry 定义的具体 ID。`0x0000` 表示 N/A，不作为正常 Single File 文件类型使用；`0xFFFF` 表示 Unknown / Invalid。
+v1 尚未分配具体普通文件类型 ID，Single File 使用 `0xFFFE` 表示 Unknown。`0x0000` 表示 N/A，仅用于 Directory Archive；`0xFFFF` 表示 Invalid，不得写入有效文件。
 
 ### Directory Archive
 
@@ -317,7 +318,7 @@ Size：
 8 bytes
 ```
 
-表示 Metadata 在文件中实际占用的字节数，包括末尾 Padding。
+表示 Metadata 在文件中实际占用的字节数，包括 Tag 之前的 Padding 与末尾 Tag。
 
 必须满足：
 
@@ -388,8 +389,8 @@ Algorithm ID
 其中：
 
 - `Flags.Bit14` 是是否启用压缩的唯一状态来源。
-- 当 `Flags.Bit14 = 0` 时，Metadata 中不得出现 Compression ID 或 Compression Parameters。
-- 当 `Flags.Bit14 = 1` 时，Metadata 必须包含 Compression ID 和 Compression Parameters。
+- 当 `Flags.Bit14 = 0` 时，Metadata 中不得出现 Compression ID、Compression Parameters Length 或 Compression Parameters。
+- 当 `Flags.Bit14 = 1` 时，Metadata 必须包含 Compression ID、Compression Parameters Length 和 Compression Parameters。
 - Metadata 不重复存储“是否压缩”这一状态，只存储启用压缩时所需的具体算法与参数。
 
 ### Single File Metadata
@@ -401,21 +402,22 @@ KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Zero Padding
+Authentication Tag
 ```
 
 启用压缩：
 
 ```text
 Compression ID
+Compression Parameters Length
 Compression Parameters
 KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Zero Padding
+Authentication Tag
 ```
 
 ### Directory Archive Metadata
@@ -428,8 +430,8 @@ KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Zero Padding
+Authentication Tag
 ```
 
 启用压缩：
@@ -437,29 +439,43 @@ Zero Padding
 ```text
 Index Length
 Compression ID
+Compression Parameters Length
 Compression Parameters
 KDF ID
 KDF Parameters
 Salt
 Nonce
-Authentication Tag
 Zero Padding
+Authentication Tag
 ```
 
 其中：
 
 - `Index Length` 仅 Directory Archive 存在。
-- `Compression ID` 与 `Compression Parameters` 仅在启用压缩时存在。
+- `Compression ID`、`Compression Parameters Length` 与 `Compression Parameters` 仅在启用压缩时存在。
 - `KDF ID`、`KDF Parameters`、`Salt`、`Nonce`、`Authentication Tag` 为密码学字段。
-- `Zero Padding` 始终位于 Metadata 最末尾。
+- `Zero Padding` 位于 Authentication Tag 之前，Authentication Tag 始终位于 Metadata 最末尾。
 
-各字段的长度由当前 Version 对应的 KDF、Algorithm 和 Compression 定义决定。
+各字段的长度由当前 Version 对应的 KDF、Algorithm 和 Compression 定义决定，具体定义见 `REGISTRY_V1.md`。
+
+Compression Parameters Length 为 uint16，Zstandard v1 必须为 0；因此启用压缩时增加 4 bytes。KDF ID 为 uint16，Argon2id Parameters 固定为 16 bytes，Salt 为 16 bytes。Nonce 为 AES-GCM 的 12 bytes 或 XChaCha 的 24 bytes，Tag 为 16 bytes。Index Length 为 uint64。
+
+当前 Registry 下各组合的 Metadata 长度（含最小零填充）如下：
+
+| 容器 | 压缩 | AES-256-GCM | XChaCha20-Poly1305 |
+| --- | --- | ---: | ---: |
+| Single File | 否 | 64 | 80 |
+| Single File | 是 | 80 | 80 |
+| Directory Archive | 否 | 80 | 96 |
+| Directory Archive | 是 | 80 | 96 |
+
+读取时 Metadata Length 必须等于布局计算的长度，不接受额外整块 Padding。
 
 ---
 
 # 5. Metadata Padding
 
-完成实际 Metadata 字段后，如果长度不是 16 的倍数，则在末尾追加 Padding。
+完成 Tag 之前的 Metadata 字段后，按包含 Tag 的总长度计算最小 Padding，写入 Padding 后再写入 Tag，使 Metadata 总长度为 16 的倍数。
 
 Padding：
 
@@ -477,7 +493,7 @@ Metadata Length 包含 Padding。
 
 规则：
 
-- Padding 只允许位于 Metadata 最末尾。
+- Padding 只允许位于 Metadata 字段与末尾 Authentication Tag 之间。
 - Padding 内容必须全部为 `0x00`。
 - Metadata Length 必须包含 Padding。
 
@@ -530,11 +546,10 @@ FileCrypt v1 的 AAD 定义为：
 ```text
 AAD =
     Header
-  + Metadata 中除 Authentication Tag 外的部分
-  + Metadata Padding
+  + Metadata[0 : TagOffset]
 ```
 
-因此 Metadata 中的 `Index Length`、Compression 信息、KDF 信息等都会受到认证保护。
+其中 Metadata[0 : TagOffset] 已包含 Padding，不得重复追加 Padding。因此 Metadata 中的 `Index Length`、Compression 信息、KDF 信息等都会受到认证保护。
 
 ---
 
@@ -568,10 +583,10 @@ Flags.Bit15 = 1
     → Directory Archive
 
 Flags.Bit14 = 0
-    → Metadata 不包含 Compression ID / Parameters
+    → Metadata 不包含 Compression ID / Parameters Length / Parameters
 
 Flags.Bit14 = 1
-    → Metadata 必须包含 Compression ID / Parameters
+    → Metadata 必须包含 Compression ID / Parameters Length / Parameters
 ```
 
 ---
