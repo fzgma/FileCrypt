@@ -31,7 +31,7 @@ deserialize
 Header object
 ```
 
-并证明序列化结果严格符合 `docs/SPEC.md` 中定义的 FileCrypt v1 Header。
+并证明序列化结果严格符合 `docs/FILE_FORMAT.md` 中定义的 FileCrypt v1 Header。
 
 ---
 
@@ -273,6 +273,13 @@ FCRY
 ```
 
 则失败。
+
+输入长度大于 32 bytes 时，只解析前 32 bytes，忽略后续数据。
+短输入或错误 Magic 使用 `std::invalid_argument` 报错。
+
+本提交的反序列化仅做长度与 Magic 校验，不验证 Version、Flags、Algorithm、
+File Type、Metadata Length 或 Reserved 的协议语义。能够编解码某个 Header，
+不代表它构成合法的 v1 文件；完整协议校验由后续实现负责。
 
 反序列化后必须正确恢复：
 

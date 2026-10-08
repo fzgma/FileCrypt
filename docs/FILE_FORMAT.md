@@ -257,6 +257,8 @@ Algorithm Definition 同时规定：
 - 加密方式
 - Metadata 中算法相关字段的解释方式
 
+Algorithm Registry 可以同时注册多个 AEAD 算法。不同算法之间不是互斥关系；每个 `.fcry` 文件通过 Header 中的 Algorithm ID 选择其中一个。
+
 ---
 
 ## 3.5 File Type
@@ -273,27 +275,31 @@ Size：
 2 bytes
 ```
 
+### File Type Registry
+
+当前仅定义特殊值，具体普通文件类型 ID 暂不注册。
+
+```text
+0x0000 = N/A
+0x0001 ~ 0xFFFE = 由未来 File Type Registry 定义
+0xFFFF = Unknown / Invalid
+```
+
 ### Single File
 
 当 `Flags.Bit15 = 0` 时，File Type 表示加密前原始文件的类型。
 
-例如：
-
-```text
-0x0000 = Unknown
-```
-
-具体 File Type ID 由当前 Version 对应的 File Type 注册表定义。
+正常情况下应使用未来 File Type Registry 定义的具体 ID。`0x0000` 表示 N/A，不作为正常 Single File 文件类型使用；`0xFFFF` 表示 Unknown / Invalid。
 
 ### Directory Archive
 
 当 `Flags.Bit15 = 1` 时，File Type 固定为：
 
 ```text
-0x0000 = Unknown
+0x0000 = N/A
 ```
 
-此时容器类型由 `Flags.Bit15` 表示，File Type 不参与 Directory Archive 的格式解释。
+因为 Directory Archive 不对应单一原始文件类型。具体文件类型属于 Directory Index 中各 File Entry 的语义，由目录中的实际文件分别确定。
 
 ---
 

@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.24)
+project(FileCrypt VERSION 0.1.0 LANGUAGES CXX)
+
+add_library(filecrypt_format src/format/header.cpp)
+target_include_directories(filecrypt_format PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_features(filecrypt_format PUBLIC cxx_std_23)
+set_target_properties(filecrypt_format PROPERTIES CXX_EXTENSIONS OFF)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(header_test tests/format/header_test.cpp)
+    target_link_libraries(header_test PRIVATE filecrypt_format)
+    set_target_properties(header_test PROPERTIES CXX_EXTENSIONS OFF)
+    add_test(NAME format_header COMMAND header_test)
+endif()

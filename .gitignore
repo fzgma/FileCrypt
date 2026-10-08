@@ -69,3 +69,9 @@ Testing/
 
 #visual studio
 /.vs/
+
+# visual studio code
+.vscode/c_cpp_properties.json
+.vscode/tasks.json
+
+/.agents/

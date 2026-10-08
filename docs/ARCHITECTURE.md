@@ -447,6 +447,8 @@ Tag Size
 Cipher implementation
 ```
 
+Algorithm Registry 可以同时包含多个 AEAD 算法，例如 AES-GCM 与 XChaCha20-Poly1305。它们是并列的可选实现，并非只能保留一种。每个 `.fcry` 文件通过 Header 中的 Algorithm ID 选择一个具体算法。
+
 MetadataLayout 和 CipherContext 创建流程都使用 Algorithm Registry。
 
 ---

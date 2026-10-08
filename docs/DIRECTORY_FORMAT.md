@@ -32,10 +32,10 @@ Flags = 0xC000
 Directory Archive 的 `File Type` 固定为：
 
 ```text
-0x0000 = Unknown
+0x0000 = N/A
 ```
 
-容器类型由 `Flags.Bit15` 表示，File Type 不参与 Directory Archive 的格式解释。
+因为 Directory Archive 不对应单一原始文件类型。容器类型由 `Flags.Bit15` 表示；该 Header 字段在 Directory Archive 中不承担具体文件类型语义。
 
 ---
 

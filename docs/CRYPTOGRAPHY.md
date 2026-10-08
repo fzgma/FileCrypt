@@ -540,6 +540,8 @@ Compression Definition
 
 FileCrypt 的核心流程不依赖某个单独的具体实现。
 
+Algorithm Registry 可以同时提供多个 AEAD 算法。AES-GCM 与 XChaCha20-Poly1305 可以同时存在，具体每个文件使用哪一个由 Header 中的 Algorithm ID 决定。它们共享统一的 AEAD 接口，但各自的 Key Size、Nonce Size、Tag Size 等参数由对应 Algorithm Definition 决定。
+
 不同 FileCrypt Version 使用独立的 ID 定义。
 
 ---
