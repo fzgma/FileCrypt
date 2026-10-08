@@ -9,8 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_subdirectory(src)
 
 # CLI 位于构建目录根部，格式与文件操作由独立库提供。
-add_executable(filecrypt main.cpp)
-target_link_libraries(filecrypt PRIVATE FileCrypt::Format FileCrypt::IO)
+add_executable(filecrypt src/cli/main.cpp)
+target_link_libraries(filecrypt PRIVATE FileCrypt::App)
 target_compile_options(filecrypt PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
 include(CTest)

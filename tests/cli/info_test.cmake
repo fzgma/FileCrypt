@@ -73,6 +73,12 @@ endforeach()
 
 file(WRITE "${TEST_DIR}/invalid.fcry" "FCRX")
 run_failure(info "${TEST_DIR}/invalid.fcry")
+file(WRITE "${TEST_DIR}/unknown-version.fcry" "FCRY22")
+execute_process(COMMAND "${FILECRYPT}" info "${TEST_DIR}/unknown-version.fcry"
+    RESULT_VARIABLE result ERROR_VARIABLE error ENCODING UTF-8)
+if(result EQUAL 0 OR NOT error MATCHES "Unsupported FileCrypt version")
+    message(FATAL_ERROR "未知版本未在前缀分发阶段拒绝：${error}")
+endif()
 string(REPEAT "x" 124 invalid_tail)
 file(WRITE "${TEST_DIR}/invalid.fcry" "FCRX${invalid_tail}")
 run_failure(info "${TEST_DIR}/invalid.fcry")

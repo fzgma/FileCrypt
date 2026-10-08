@@ -1,5 +1,5 @@
-#include <filecrypt/format/metadata.hpp>
-#include <filecrypt/format/registry.hpp>
+#include <filecrypt/format/v1/metadata.hpp>
+#include <filecrypt/format/v1/registry.hpp>
 
 #include <algorithm>
 #include <iostream>
@@ -9,7 +9,7 @@
 #include <string_view>
 
 namespace {
-using namespace filecrypt::format;
+using namespace filecrypt::format::v1;
 
 /// 条件失败时抛出带有原因的测试异常。
 void require(bool condition, const char* message) {

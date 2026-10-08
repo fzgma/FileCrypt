@@ -21,7 +21,11 @@ Visual Studio 等多配置生成器使用 `cmake --build build --config Release`
 
 个人构建预设可放在 `CMakeUserPresets.json`，该文件已被 Git 忽略，不随仓库分发。
 
-根 `CMakeLists.txt` 管理项目标准、CLI 和测试开关；`src/CMakeLists.txt` 定义格式库与 IO 库，`tests/CMakeLists.txt` 定义格式及 CLI 测试。可使用 `-DBUILD_TESTING=OFF` 关闭测试目标。
+根 `CMakeLists.txt` 管理项目标准、CLI 和测试开关；`src/CMakeLists.txt` 定义应用、格式与 IO 库，`tests/CMakeLists.txt` 定义格式、版本分发及 CLI 测试。可使用 `-DBUILD_TESTING=OFF` 关闭测试目标。
+
+当前代码按职责分层：`src/cli/` 负责命令解析与展示，`src/app/` 负责版本分发，
+`src/app/v1/` 负责 v1 文件流程，`src/format/v1/` 保存 v1 协议与 Registry，
+`src/io/` 和 `src/platform/` 提供共享文件操作。CLI 不依赖 v1 格式类型。
 
 ## 生成 Header 与 Metadata 示例
 

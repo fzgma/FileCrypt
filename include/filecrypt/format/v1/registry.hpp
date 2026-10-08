@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace filecrypt::format {
+namespace filecrypt::format::v1 {
 
 struct AlgorithmDefinition {
     std::uint16_t id;
@@ -35,4 +35,4 @@ struct CompressionDefinition {
 /// 查询 v1 压缩定义，未知 ID 抛出 std::invalid_argument。
 [[nodiscard]] const CompressionDefinition& compression_definition(std::uint16_t id);
 
-} // namespace filecrypt::format
+} // namespace filecrypt::format::v1

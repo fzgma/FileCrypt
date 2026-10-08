@@ -1,9 +1,9 @@
-#include <filecrypt/format/header.hpp>
+#include <filecrypt/format/v1/header.hpp>
 
 #include <algorithm>
 #include <stdexcept>
 
-namespace filecrypt::format {
+namespace filecrypt::format::v1 {
 namespace {
 
 /// 将无符号整数按小端顺序写入指定偏移。
@@ -58,4 +58,4 @@ Header deserialize(std::span<const std::byte> data) {
     return header;
 }
 
-} // namespace filecrypt::format
+} // namespace filecrypt::format::v1

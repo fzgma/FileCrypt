@@ -1,4 +1,4 @@
-#include <filecrypt/format/header.hpp>
+#include <filecrypt/format/v1/header.hpp>
 
 #include <algorithm>
 #include <array>
@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace {
-using namespace filecrypt::format;
+using namespace filecrypt::format::v1;
 
 /// 条件不满足时抛出包含失败原因的测试异常。
 void require(bool condition, const char* message) {

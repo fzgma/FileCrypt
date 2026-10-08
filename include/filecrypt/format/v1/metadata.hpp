@@ -1,11 +1,11 @@
 #pragma once
 
-#include <filecrypt/format/header.hpp>
+#include <filecrypt/format/v1/header.hpp>
 
 #include <optional>
 #include <vector>
 
-namespace filecrypt::format {
+namespace filecrypt::format::v1 {
 
 struct Argon2idParameters {
     std::uint8_t version{0x13};
@@ -67,4 +67,4 @@ struct MetadataLayout {
 
 // 所有格式错误和不支持的协议编号均抛出 std::invalid_argument。
 // 本层不计算 Tag、不执行 KDF，也不验证密文认证或实际 Index 长度。
-} // namespace filecrypt::format
+} // namespace filecrypt::format::v1

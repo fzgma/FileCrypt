@@ -6,6 +6,13 @@
 
 ## 1. AEAD 消息粒度
 
+### 跨版本识别前缀
+
+FileCrypt 各协议版本共用前六字节：`FCRY`（4 bytes）和 Little-Endian
+`uint16 Version`（2 bytes）。分发器只读取这个前缀，再调用对应版本实现；
+六字节之后的布局、Registry、AAD 和载荷模型由各版本独立定义。
+当前只支持版本 1，未知版本必须明确失败，不按 v1 尝试解析。
+
 FileCrypt v1 使用**单 AEAD 消息**模型。
 
 完整加密载荷按照以下顺序处理：

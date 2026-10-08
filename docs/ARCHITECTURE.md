@@ -1,6 +1,6 @@
-# FileCrypt v1 Architecture
+# FileCrypt Architecture
 
-**架构版本：v1**  
+**架构：版本隔离与共享基础能力**
 **状态：Design / 已确定**
 
 本文定义 FileCrypt 程序内部架构。
@@ -46,57 +46,38 @@ IO 不理解加密逻辑。
 
 ---
 
-# 2. 项目目录
+# 2. 项目目录与版本边界
 
 ```text
-FileCrypt/
-├── CMakeLists.txt
-├── LICENSE
-├── README.md
-│
-├── docs/
-│   ├── FILE_FORMAT.md
-│   ├── DIRECTORY_FORMAT.md
-│   ├── ARCHITECTURE.md
-│   └── CRYPTOGRAPHY.md
-│
-├── include/
-│   └── filecrypt/
-│       ├── app/
-│       │   ├── encrypt.hpp
-│       │   ├── decrypt.hpp
-│       │   └── inspect.hpp
-│       │
-│       ├── crypto/
-│       │   ├── algorithm.hpp
-│       │   ├── kdf.hpp
-│       │   ├── cipher.hpp
-│       │   ├── compression.hpp
-│       │   └── registry.hpp
-│       │
-│       ├── format/
-│       │   ├── header.hpp
-│       │   ├── metadata.hpp
-│       │   ├── layout.hpp
-│       │   └── directory.hpp
-│       │
-│       └── io/
-│           ├── file.hpp
-│           └── stream.hpp
-│
-├── src/
-│   ├── app/
-│   ├── crypto/
-│   ├── format/
-│   ├── io/
-│   └── main.cpp
-│
-└── tests/
-    ├── format/
-    ├── crypto/
-    ├── io/
-    └── integration/
+include/filecrypt/
+    app/operations.hpp          公共操作与展示结果
+    format/detect.hpp           六字节版本识别
+    format/v1/                  v1 Header、Metadata、Registry
+    io/file.hpp                 共享文件操作
+src/
+    cli/main.cpp                参数与展示
+    app/operations.cpp          版本分发
+    app/v1/operations.cpp       v1 信息读取与样本流程
+    format/detect.cpp
+    format/v1/
+    io/
+    platform/
+tests/
+    format/detect_test.cpp
+    format/v1/
+    cli/
 ```
+
+Application 读取 `FCRY + uint16 Version` 后分发，不能先把未知版本按 v1 Header 解析。
+v1 的字段布局、Registry 和未来 AAD 实现属于 `filecrypt::format::v1`；未来版本独立新增模块，
+不复用 v1 的裸协议编号或强制继承 v1 解析对象。当前不创建 v2 空目录。
+
+公开 `FileInfo` 只包含展示信息，不暴露 Header、Metadata 或协议偏移。
+`SampleOptions` 显式携带创建版本，默认 v1；未知版本在文件创建前拒绝。
+CLI 只依赖 Application；Application 调用 Format 和 IO；Format、IO 彼此独立。
+
+未来 Crypto 与 Compression 提供不依赖文件协议编号的基础能力，版本流程负责转换与编排。
+临时输出和清理由 IO 提供，允许提交的时机由版本流程决定；本轮尚未实现输出事务和加解密。
 
 ---
 

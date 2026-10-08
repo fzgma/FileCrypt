@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <span>
 
-namespace filecrypt::format {
+namespace filecrypt::format::v1 {
 
 inline constexpr std::size_t header_size = 32;
 inline constexpr std::array<std::byte, 4> header_magic{
@@ -31,4 +31,4 @@ struct Header {
 // 输入不足 32 字节或 Magic 错误时抛出 std::invalid_argument。
 [[nodiscard]] Header deserialize(std::span<const std::byte> data);
 
-} // namespace filecrypt::format
+} // namespace filecrypt::format::v1

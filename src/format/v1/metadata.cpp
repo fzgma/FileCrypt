@@ -1,10 +1,10 @@
-#include <filecrypt/format/metadata.hpp>
-#include <filecrypt/format/registry.hpp>
+#include <filecrypt/format/v1/metadata.hpp>
+#include <filecrypt/format/v1/registry.hpp>
 
 #include <algorithm>
 #include <stdexcept>
 
-namespace filecrypt::format {
+namespace filecrypt::format::v1 {
 namespace {
 constexpr std::uint16_t directory_flag = 0x8000;
 constexpr std::uint16_t compression_flag = 0x4000;
@@ -171,4 +171,4 @@ Metadata deserialize_metadata(const Header& header, std::span<const std::byte> d
         [](std::byte value) { return value == std::byte{0}; }), "Nonzero Metadata padding");
     return metadata;
 }
-} // namespace filecrypt::format
+} // namespace filecrypt::format::v1

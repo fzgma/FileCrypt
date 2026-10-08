@@ -1,8 +1,8 @@
-#include <filecrypt/format/registry.hpp>
+#include <filecrypt/format/v1/registry.hpp>
 
 #include <stdexcept>
 
-namespace filecrypt::format {
+namespace filecrypt::format::v1 {
 namespace {
 constexpr AlgorithmDefinition aes{1, "AES-256-GCM", 32, 12, 16,
     (std::uint64_t{1} << 36) - 32};
@@ -36,4 +36,4 @@ const CompressionDefinition& compression_definition(std::uint16_t id) {
     }
     return zstandard;
 }
-} // namespace filecrypt::format
+} // namespace filecrypt::format::v1
