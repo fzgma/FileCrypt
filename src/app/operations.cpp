@@ -48,7 +48,9 @@ void encrypt_file(const std::filesystem::path& input, const std::filesystem::pat
 
 /// 在最小识别前缀确认版本后分发真实文件解密。
 void decrypt_file(const std::filesystem::path& path, const std::filesystem::path& output,
-    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits) {
+    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
+    const compression::DecompressionLimits& decompression_limits) {
+    compression::validate_limits(decompression_limits);
     if (!std::filesystem::is_regular_file(path)) {
         throw std::invalid_argument("Decryption input must be a regular file");
     }
@@ -64,7 +66,7 @@ void decrypt_file(const std::filesystem::path& path, const std::filesystem::path
         throw std::runtime_error("Cannot seek input file");
     }
     switch (version) {
-    case 1: v1::decrypt(input, output, password, limits); return;
+    case 1: v1::decrypt(input, output, password, limits, decompression_limits); return;
     default: throw std::invalid_argument("Unsupported FileCrypt version");
     }
 }

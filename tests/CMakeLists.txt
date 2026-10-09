@@ -18,14 +18,18 @@ add_executable(crypto_test crypto/crypto_test.cpp)
 target_link_libraries(crypto_test PRIVATE FileCrypt::Crypto FileCrypt::Format)
 add_test(NAME crypto_core COMMAND crypto_test)
 
+add_executable(compression_test compression/compression_test.cpp)
+target_link_libraries(compression_test PRIVATE FileCrypt::Compression Zstd::Zstd)
+add_test(NAME compression_core COMMAND compression_test)
+
 # 单元测试可单独构建，测试程序统一放在 build/tests/unit。
-set(unit_test_targets header_test metadata_test aad_test detect_test crypto_test)
+set(unit_test_targets header_test metadata_test aad_test detect_test crypto_test compression_test)
 foreach(test_target IN LISTS unit_test_targets)
     set_target_properties(${test_target} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unit")
 endforeach()
 add_custom_target(unit_tests DEPENDS ${unit_test_targets})
-set_tests_properties(format_header format_metadata format_aad format_detect crypto_core
+set_tests_properties(format_header format_metadata format_aad format_detect crypto_core compression_core
     PROPERTIES LABELS "unit")
 
 add_test(NAME cli_info COMMAND "${CMAKE_COMMAND}"
@@ -35,7 +39,7 @@ add_test(NAME cli_info COMMAND "${CMAKE_COMMAND}"
 set_tests_properties(cli_info PROPERTIES LABELS "integration;smoke")
 
 add_executable(file_crypt_test app/file_crypt_test.cpp)
-target_link_libraries(file_crypt_test PRIVATE FileCrypt::App FileCrypt::IO)
+target_link_libraries(file_crypt_test PRIVATE FileCrypt::App FileCrypt::IO FileCrypt::Format)
 set_target_properties(file_crypt_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/integration")
 add_custom_target(integration_tests DEPENDS file_crypt_test filecrypt)

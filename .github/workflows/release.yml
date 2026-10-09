@@ -1,0 +1,54 @@
+name: 标签发布
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-test:
+    name: 构建并验证两平台产物
+    uses: ./.github/workflows/build-test.yml
+
+  release:
+    name: 发布可执行文件与校验文件
+    needs: build-test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: 下载本次运行的 Linux 正式程序
+        uses: actions/download-artifact@v4
+        with:
+          name: filecrypt-linux-x86_64
+          path: release/linux
+      - name: 下载本次运行的 Windows 正式程序
+        uses: actions/download-artifact@v4
+        with:
+          name: filecrypt-windows-x86_64
+          path: release/windows
+      - name: 整理发布文件并计算 SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv release/linux/filecrypt release/filecrypt-linux-x86_64
+          mv release/windows/filecrypt.exe release/filecrypt-windows-x86_64.exe
+          chmod +x release/filecrypt-linux-x86_64
+          cd release
+          sha256sum filecrypt-linux-x86_64 filecrypt-windows-x86_64.exe > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes
+          release/filecrypt-linux-x86_64 release/filecrypt-windows-x86_64.exe release/SHA256SUMS

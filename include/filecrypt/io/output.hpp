@@ -18,7 +18,9 @@ public:
     OutputTransaction& operator=(const OutputTransaction&) = delete;
     /// 完整写入字节，写入失败时抛出异常。
     void write(std::span<const std::byte> bytes);
-    /// 将临时文件写指针移动到指定绝对偏移。
+    /// 从当前指针读取受控临时内容，文件末尾返回零。
+    [[nodiscard]] std::size_t read(std::span<std::byte> bytes);
+    /// 将临时文件读写指针移动到指定绝对偏移。
     void seek(std::uint64_t offset);
     /// 刷新并关闭输出，将其提交到不存在的目标路径。
     void commit();

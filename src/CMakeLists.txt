@@ -26,11 +26,19 @@ target_include_directories(filecrypt_crypto PUBLIC "${PROJECT_SOURCE_DIR}/includ
 target_link_libraries(filecrypt_crypto PUBLIC Botan::Botan)
 target_compile_features(filecrypt_crypto PUBLIC cxx_std_23)
 
+# 压缩层只提供流式数据转换，不理解协议编号、密码或文件路径。
+find_package(Zstd 1.5.2 REQUIRED)
+add_library(filecrypt_compression compression/zstd/compression.cpp)
+add_library(FileCrypt::Compression ALIAS filecrypt_compression)
+target_include_directories(filecrypt_compression PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(filecrypt_compression PRIVATE Zstd::Zstd)
+target_compile_features(filecrypt_compression PUBLIC cxx_std_23)
+
 # 应用层拥有版本分发与流程编排，CLI 不直接依赖版本格式类型。
 add_library(filecrypt_app app/operations.cpp app/v1/operations.cpp app/v1/crypt.cpp)
 add_library(FileCrypt::App ALIAS filecrypt_app)
 target_include_directories(filecrypt_app PUBLIC "${PROJECT_SOURCE_DIR}/include")
-target_link_libraries(filecrypt_app PRIVATE FileCrypt::Format FileCrypt::IO PUBLIC FileCrypt::Crypto)
+target_link_libraries(filecrypt_app PRIVATE FileCrypt::Format FileCrypt::IO FileCrypt::Compression PUBLIC FileCrypt::Crypto)
 target_compile_features(filecrypt_app PUBLIC cxx_std_23)
 target_compile_options(filecrypt_app PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 

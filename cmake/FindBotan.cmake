@@ -1,6 +1,6 @@
 ﻿find_package(PkgConfig QUIET)
 option(Botan_USE_STATIC_LIBS "使用 Botan 静态库及其传递依赖" OFF)
-if(Botan_USE_STATIC_LIBS)
+if(Botan_USE_STATIC_LIBS AND UNIX)
     # 静态发布必须读取同一安装前缀的 .pc 文件，不能丢失传递依赖。
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(PC_BOTAN REQUIRED botan-3)
@@ -10,15 +10,12 @@ if(PkgConfig_FOUND AND NOT Botan_USE_STATIC_LIBS)
 endif()
 find_path(Botan_INCLUDE_DIR botan/version.h
     HINTS ${PC_BOTAN_INCLUDE_DIRS} PATH_SUFFIXES botan-3)
-if(Botan_USE_STATIC_LIBS)
-    if(NOT UNIX)
-        message(FATAL_ERROR "Botan_USE_STATIC_LIBS 当前仅支持 Unix 静态发布")
-    endif()
+if(Botan_USE_STATIC_LIBS AND UNIX)
     set(_botan_library_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}")
     set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
 endif()
 find_library(Botan_LIBRARY NAMES botan-3 botan HINTS ${PC_BOTAN_LIBRARY_DIRS})
-if(Botan_USE_STATIC_LIBS)
+if(Botan_USE_STATIC_LIBS AND UNIX)
     set(CMAKE_FIND_LIBRARY_SUFFIXES "${_botan_library_suffixes}")
     if(Botan_LIBRARY AND NOT Botan_LIBRARY MATCHES "\\.a$")
         message(FATAL_ERROR "Botan 静态发布需要 .a 库；请清除旧的 Botan_LIBRARY 缓存")
@@ -41,12 +38,16 @@ if(Botan_FOUND AND NOT TARGET Botan::Botan)
     set_target_properties(Botan::Botan PROPERTIES
         IMPORTED_LOCATION "${Botan_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${Botan_INCLUDE_DIR}")
-    if(Botan_USE_STATIC_LIBS)
+    if(Botan_USE_STATIC_LIBS AND UNIX)
         set(_botan_dependencies ${PC_BOTAN_STATIC_LIBRARIES})
         list(REMOVE_ITEM _botan_dependencies botan-3 botan)
         set_target_properties(Botan::Botan PROPERTIES
             INTERFACE_LINK_LIBRARIES "${_botan_dependencies}"
             INTERFACE_LINK_DIRECTORIES "${PC_BOTAN_STATIC_LIBRARY_DIRS}"
             INTERFACE_LINK_OPTIONS "${PC_BOTAN_STATIC_LDFLAGS_OTHER}")
+    elseif(Botan_USE_STATIC_LIBS AND WIN32)
+        # Windows 发布由静态 vcpkg triplet 提供 .lib，补齐 Botan 的系统依赖。
+        set_target_properties(Botan::Botan PROPERTIES
+            INTERFACE_LINK_LIBRARIES "bcrypt;crypt32;ws2_32;advapi32;user32")
     endif()
 endif()

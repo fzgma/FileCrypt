@@ -12,6 +12,7 @@ EOL 系统不承诺兼容，也不纳入正式测试矩阵。这是支持政策�
 - 使用仍在维护的 AlmaLinux 8 系 `quay.io/pypa/manylinux_2_28_x86_64` 构建，发布产物所需 glibc 符号不得高于 2.34。
 - 程序和 Botan 均显式使用 `-march=x86-64 -mtune=generic`，不使用 `-march=native`。
 - Botan 3.13.0 从官方源码构建静态库，校验固定 SHA-256；不使用发行版预编译的 Botan。
+- Zstandard 1.5.7 同样从官方源码构建静态库并校验固定 SHA-256，使用通用 x86-64 编译选项。
 - 使用 `-static-libstdc++ -static-libgcc` 优先静态链接 C++ 运行库，产物审计要求不再依赖它们的共享库。
 - glibc 继续动态链接，不使用 `-static`，不尝试完全静态链接 glibc。
 
@@ -28,17 +29,17 @@ Botan 的可选指令集优化保留运行时 CPU 探测，不能全局强制启
 
 ## 验证与分发
 
-Linux 和 MSVC 构建后分别执行 5 项单元测试、2 项正式程序冒烟测试和 1 项文件流程集成测试。
-冒烟测试直接调用正式可执行文件，验证格式生成与读取、两种算法的真实加解密、密码错误和已有输出保护；
+Linux 和 MSVC 构建后分别执行 6 项单元测试、2 项正式程序冒烟测试和 1 项文件流程集成测试。
+冒烟测试直接调用正式可执行文件，验证格式生成与读取、两种算法的压缩及无压缩加解密、密码错误和已有输出保护；
 CTest 标签为 `unit`、`smoke`，冒烟测试同时保留 `integration` 标签。
 Linux 随后审计正式程序和测试程序的 ELF：
 
 - ELF64、x86-64，使用 `/lib64/ld-linux-x86-64.so.2` 动态加载器。
 - 所需 glibc 符号不高于 2.34，不允许私有或未知 glibc ABI。
-- 动态依赖仅允许 glibc 系统库，不允许 Botan、libstdc++、libgcc 或其他第三方共享库。
+- 动态依赖仅允许 glibc 系统库，不允许 Botan、Zstandard、libstdc++、libgcc 或其他第三方共享库。
 - ELF ISA 必需属性不能声明 x86-64-v2/v3/v4；属性检查不能替代实际运行验证。
 
-同一批已编译程序会在以下正式矩阵中执行全部 8 项对应测试，不重新编译：
+同一批已编译程序会在以下正式矩阵中执行全部 9 项对应测试，不重新编译：
 
 | 发行版 | 测试版本 |
 | --- | --- |
@@ -55,9 +56,14 @@ Linux 随后审计正式程序和测试程序的 ELF：
 内容只有正式可执行文件 `filecrypt`；测试程序、依赖源码、文档和构建信息均不上传。
 构建版本、依赖校验信息及 ELF 审计结果留在 Actions 日志。
 Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即可使用，
-无需另外安装 Botan 或 C++ 运行库。Windows 仅保留 MSVC 构建测试任务，产物不上传。
+无需另外安装 Botan、Zstandard 或 C++ 运行库。Windows MSVC 同样在测试通过后上传仅含 `filecrypt.exe` 的
+`filecrypt-windows-x86_64` Artifact，依赖与 MSVC 运行库静态链接，vcpkg 仅编译 Release。
 
-本地目前仅验证 Windows/MinGW；新的 Linux 发布流程须在 GitHub Actions 实际运行确认。
+推送 `v*` 标签触发独立发布工作流，复用上述两平台构建测试；全部验证成功后下载同次运行的 Artifacts，
+将 Linux 和 Windows 可执行文件分别命名为 `filecrypt-linux-x86_64`、`filecrypt-windows-x86_64.exe`，
+生成包含两者 SHA-256 的 `SHA256SUMS` 并创建 GitHub Release；任一验证失败均不发布。
+
+新增压缩功能的 Windows/MinGW 本地构建已通过；此前 Linux 发布流程已通过，新增静态 Zstandard 构建及 MSVC Actions 待确认。
 
 ## 参考资料
 

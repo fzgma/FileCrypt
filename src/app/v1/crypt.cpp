@@ -10,6 +10,8 @@
 namespace filecrypt::app::v1 {
 namespace {
 namespace format = filecrypt::format::v1;
+constexpr std::uint16_t compressed_flag = 0x4000;
+constexpr std::uint16_t directory_flag = 0x8000;
 
 /// 将已支持的 v1 协议编号转换为独立 Crypto 算法枚举。
 crypto::Algorithm cipher_algorithm(std::uint16_t id) {
@@ -39,22 +41,27 @@ crypto::Bytes crypto_bytes(std::span<const std::byte> bytes) {
     return result;
 }
 
+/// 读取有界输入块，区分正常文件末尾和读取错误。
+std::size_t read_stream(std::istream& input, std::span<std::byte> bytes) {
+    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (input.bad() || (input.fail() && !input.eof())) {
+        throw std::runtime_error("Input file read failed");
+    }
+    return static_cast<std::size_t>(input.gcount());
+}
+
+/// 将一个输入块交给密码层并写入受控临时输出。
+void write_cipher(crypto::CipherContext& cipher, io::OutputTransaction& output,
+    std::span<const std::byte> bytes) {
+    const auto part = cipher.update({reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()});
+    output.write(std::as_bytes(std::span(part)));
+}
+
 /// 用固定大小安全缓冲区处理剩余输入流并写入受控临时输出。
 void process_stream(std::istream& input, crypto::CipherContext& cipher, io::OutputTransaction& output) {
     crypto::SecureBytes buffer(65536);
-    while (true) {
-        input.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
-        const auto count = input.gcount();
-        if (input.bad() || (input.fail() && !input.eof())) {
-            throw std::runtime_error("Input file read failed");
-        }
-        if (count > 0) {
-            const auto part = cipher.update(std::span(buffer).first(static_cast<std::size_t>(count)));
-            output.write(std::as_bytes(std::span(part)));
-        }
-        if (input.eof()) {
-            break;
-        }
+    while (const auto count = read_stream(input, std::as_writable_bytes(std::span(buffer)))) {
+        write_cipher(cipher, output, std::as_bytes(std::span(buffer).first(count)));
     }
 }
 }
@@ -65,9 +72,11 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     format::Header header;
     header.version = 1;
     header.algorithm = algorithm_id(options.algorithm);
+    header.flags = options.compressed ? compressed_flag : 0;
     header.file_type = 0xFFFE;
     header.metadata_length = format::metadata_layout(header).metadata_size;
-    if (std::filesystem::file_size(path) > crypto::message_limit(options.algorithm)) {
+    // AEAD 限制计数压缩后的字节，不能用原始大小提前拒绝可压缩输入。
+    if (!options.compressed && std::filesystem::file_size(path) > crypto::message_limit(options.algorithm)) {
         throw std::length_error("File too large for selected AEAD");
     }
     std::ifstream input(path, std::ios::binary);
@@ -75,6 +84,9 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
         throw std::runtime_error("Cannot open input file");
     }
     format::Metadata metadata;
+    if (options.compressed) {
+        metadata.compression = format::CompressionMetadata{};
+    }
     metadata.kdf_parameters.memory_cost_kib = options.kdf.memory_kib;
     metadata.kdf_parameters.time_cost = options.kdf.iterations;
     metadata.kdf_parameters.parallelism = options.kdf.parallelism;
@@ -92,7 +104,13 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     io::OutputTransaction output(destination);
     output.write(format::serialize(header));
     output.write(format::serialize_metadata(header, metadata));
-    process_stream(input, cipher, output);
+    if (options.compressed) {
+        compression::compress(
+            [&](std::span<std::byte> bytes) { return read_stream(input, bytes); },
+            [&](std::span<const std::byte> bytes) { write_cipher(cipher, output, bytes); });
+    } else {
+        process_stream(input, cipher, output);
+    }
     const auto final = cipher.finish();
     output.write(std::as_bytes(std::span(final.output)));
     std::transform(final.tag.begin(), final.tag.end(), metadata.tag.begin(),
@@ -103,15 +121,16 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     output.commit();
 }
 
-/// 校验 v1 前缀并流式解密，整条消息认证成功才提交明文。
+/// 校验 v1 前缀并认证完整消息，按需解压后才提交明文。
 void decrypt(std::istream& input, const std::filesystem::path& destination,
-    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits) {
+    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
+    const compression::DecompressionLimits& decompression_limits) {
     std::array<std::byte, format::header_size> header_bytes{};
     io::read_exact(input, header_bytes);
     const auto header = format::deserialize(header_bytes);
     const auto layout = format::metadata_layout(header);
-    if (header.flags != 0) {
-        throw std::invalid_argument("File decryption currently supports only uncompressed single files");
+    if ((header.flags & directory_flag) != 0) {
+        throw std::invalid_argument("File decryption currently supports only single files");
     }
     if (header.metadata_length != layout.metadata_size) {
         throw std::invalid_argument("Invalid v1 Metadata length");
@@ -131,6 +150,16 @@ void decrypt(std::istream& input, const std::filesystem::path& destination,
     process_stream(input, cipher, output);
     const auto final = cipher.finish(crypto_bytes(metadata.tag));
     output.write(std::as_bytes(std::span(final.output)));
-    output.commit();
+    if ((header.flags & compressed_flag) != 0) {
+        // 只有 finish 验证通过，压缩载荷才允许进入解压器；中间事务始终不发布。
+        output.seek(0);
+        io::OutputTransaction restored(destination);
+        compression::decompress(
+            [&](std::span<std::byte> bytes) { return output.read(bytes); },
+            [&](std::span<const std::byte> bytes) { restored.write(bytes); }, decompression_limits);
+        restored.commit();
+    } else {
+        output.commit();
+    }
 }
 }

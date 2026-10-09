@@ -1,5 +1,6 @@
 #include <filecrypt/io/output.hpp>
 #include <algorithm>
+#include <cstdio>
 #include <limits>
 #include <random>
 #include <sstream>
@@ -48,8 +49,20 @@ struct OutputTransaction::Impl {
     ~Impl() {
         close();
         if (!temporary.empty()) {
+#ifdef _WIN32
+            // 使用原生删除接口清理受限 DACL 文件，避免不同标准库删除实现的差异。
+            if (!DeleteFileW(temporary.c_str())) {
+                const auto error = GetLastError();
+                if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
+                    // 析构不能抛异常，但清理失败必须留下诊断，不能静默遗留明文。
+                    std::fprintf(stderr, "临时输出清理失败（Windows 错误 %lu）\n",
+                        static_cast<unsigned long>(error));
+                }
+            }
+#else
             std::error_code error;
             std::filesystem::remove(temporary, error);
+#endif
         }
     }
 };
@@ -74,7 +87,7 @@ OutputTransaction::OutputTransaction(const std::filesystem::path& destination)
             throw std::runtime_error("Cannot set temporary output permissions");
         }
         SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), descriptor, FALSE};
-        impl_->handle = CreateFileW(candidate.c_str(), GENERIC_WRITE, 0, &attributes,
+        impl_->handle = CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE, 0, &attributes,
             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
         const auto error = GetLastError();
         LocalFree(descriptor);
@@ -86,7 +99,7 @@ OutputTransaction::OutputTransaction(const std::filesystem::path& destination)
             throw std::runtime_error("Cannot create temporary output");
         }
 #else
-        impl_->descriptor = open(candidate.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        impl_->descriptor = open(candidate.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600);
         if (impl_->descriptor >= 0) {
             impl_->temporary = candidate;
             return;
@@ -128,7 +141,31 @@ void OutputTransaction::write(std::span<const std::byte> bytes) {
     }
 }
 
-/// 在可表示范围内定位临时输出写指针。
+/// 通过原有独占句柄读取受控临时文件，不暴露路径或提前发布内容。
+std::size_t OutputTransaction::read(std::span<std::byte> bytes) {
+    if (impl_->committed) {
+        throw std::logic_error("Output already committed");
+    }
+    const auto size = std::min(bytes.size(), std::size_t{65536});
+#ifdef _WIN32
+    DWORD count{};
+    if (!ReadFile(impl_->handle, bytes.data(), static_cast<DWORD>(size), &count, nullptr)) {
+        throw std::runtime_error("Temporary output read failed");
+    }
+    return count;
+#else
+    ssize_t count;
+    do {
+        count = ::read(impl_->descriptor, bytes.data(), size);
+    } while (count < 0 && errno == EINTR);
+    if (count < 0) {
+        throw std::runtime_error("Temporary output read failed");
+    }
+    return static_cast<std::size_t>(count);
+#endif
+}
+
+/// 在可表示范围内定位临时文件读写指针。
 void OutputTransaction::seek(std::uint64_t offset) {
     if (impl_->committed || offset > std::numeric_limits<std::int64_t>::max()) {
         throw std::invalid_argument("Invalid output seek");

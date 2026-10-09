@@ -29,10 +29,10 @@ EOF
     chmod +x "$filecrypt"
 fi
 echo '运行单元测试'
-for test in header metadata aad detect crypto; do
+for test in header metadata aad detect crypto compression; do
     "${runner[@]}" "build/tests/unit/${test}_test"
 done
-echo '运行正式程序冒烟测试：格式信息及两种算法加解密'
+echo '运行正式程序冒烟测试：格式信息及两种算法的压缩和无压缩加解密'
 cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/info" -P tests/cli/info_test.cmake
 cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/crypt" -P tests/cli/crypt_test.cmake
 echo '运行文件流程集成测试'

@@ -26,9 +26,25 @@ botan_prefix="$PWD/build/deps/botan-install"
     make -j2
     make install
 )
-export PKG_CONFIG_PATH="$botan_prefix/lib/pkgconfig"
+# Zstandard 同样从固定源码构建静态库，不增加发布文件的共享库依赖。
+zstd_version=1.5.7
+zstd_sha256=eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+curl --fail --location --retry 3 \
+    "https://github.com/facebook/zstd/releases/download/v$zstd_version/zstd-$zstd_version.tar.gz" \
+    -o build/deps/zstd.tar.gz
+echo "$zstd_sha256  build/deps/zstd.tar.gz" | sha256sum --check
+tar -xf build/deps/zstd.tar.gz -C build/deps
+zstd_prefix="$PWD/build/deps/zstd-install"
+cmake -S "build/deps/zstd-$zstd_version/build/cmake" -B build/deps/zstd-build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$zstd_prefix" -DCMAKE_INSTALL_LIBDIR=lib \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON '-DCMAKE_C_FLAGS=-march=x86-64 -mtune=generic' \
+    -DZSTD_BUILD_SHARED=OFF -DZSTD_BUILD_STATIC=ON -DZSTD_BUILD_PROGRAMS=OFF \
+    -DZSTD_BUILD_TESTS=OFF -DZSTD_MULTITHREAD_SUPPORT=OFF -DZSTD_LEGACY_SUPPORT=OFF
+cmake --build build/deps/zstd-build --parallel 2
+cmake --install build/deps/zstd-build
+export PKG_CONFIG_PATH="$botan_prefix/lib/pkgconfig:$zstd_prefix/lib/pkgconfig"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-    -DCMAKE_PREFIX_PATH="$botan_prefix" -DBotan_USE_STATIC_LIBS=ON \
+    "-DCMAKE_PREFIX_PATH=$botan_prefix;$zstd_prefix" -DBotan_USE_STATIC_LIBS=ON -DZstd_USE_STATIC_LIBS=ON \
     '-DCMAKE_CXX_FLAGS=-march=x86-64 -mtune=generic' \
     '-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc'
 cmake --build build --target build_all --parallel 2
@@ -46,8 +62,9 @@ python .github/scripts/check-linux-elf.py build/filecrypt build/tests/unit/* bui
     g++ --version
     getconf GNU_LIBC_VERSION
     echo "Botan=$botan_version SHA256=$botan_sha256"
+    echo "Zstandard=$zstd_version SHA256=$zstd_sha256"
     echo 'CXXFLAGS=-march=x86-64 -mtune=generic'
-    echo 'LDFLAGS=-static-libstdc++ -static-libgcc; Botan=static'
+    echo 'LDFLAGS=-static-libstdc++ -static-libgcc; Botan=static; Zstandard=static'
     readelf --version-info build/filecrypt
     readelf --notes build/filecrypt
     ldd build/filecrypt

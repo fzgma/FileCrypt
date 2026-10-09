@@ -1,23 +1,31 @@
 #include <filecrypt/app/operations.hpp>
 #include <filecrypt/io/password.hpp>
 #include <charconv>
+#include <bit>
 #include <iostream>
+#include <set>
+#include <string>
 #include <stdexcept>
 #include <string_view>
 
 namespace {
-/// 显示文件信息读取与格式示例生成命令的用法。
+/// 显示完整命令、简写和固定路径位置的用法。
 void print_usage() {
     std::cout << "用法：\n"
-        "  filecrypt info <文件路径>\n"
-        "  filecrypt encrypt <输入文件> <输出.fcry> [--algorithm aes-256-gcm|xchacha20-poly1305]\n"
-        "  filecrypt decrypt <输入.fcry> <输出文件>\n"
-        "  filecrypt sample <文件路径> [--algorithm aes-256-gcm|xchacha20-poly1305]"
-        " [--directory] [--compressed]\n"
-        "加密参数：--memory-kib N --iterations N --parallelism N\n"
-        "资源上限：--max-memory-kib N --max-iterations N --max-parallelism N\n"
+        "  filecrypt encrypt|-e <输入路径> <输出.fcry> [选项]\n"
+        "  filecrypt decrypt|-d <输入.fcry> <输出路径> [资源上限]\n"
+        "  filecrypt info|-i <文件路径>\n"
+        "  filecrypt sample <文件路径> [algorithm|-a aes|xchacha] [directory] [compress|-z|no-compress]\n"
+        "  filecrypt help|-h\n"
+        "完整名称不带横线，简写带单横线；加解密的前两个参数固定为输入、输出路径。\n"
+        "加密选项：algorithm|-a aes|xchacha（默认 aes），compress|-z 或 no-compress（默认）\n"
+        "算法值也接受 aes-256-gcm 和 xchacha20-poly1305。\n"
+        "加密参数：memory-kib N iterations N parallelism N\n"
+        "资源上限：max-memory-kib N max-iterations N max-parallelism N\n"
+        "解压上限：max-output-bytes N（默认 16 GiB），max-window-kib N（默认 65536）\n"
         "密码从隐藏终端或标准输入读取；加密需要输入两次，解密一次。\n"
-        "encrypt/decrypt 当前支持无压缩单文件，拒绝覆盖已有输出。\n"
+        "encrypt/decrypt 支持可选 Zstandard 压缩的单文件；真实目录尚不支持。\n"
+        "解密自动读取算法和布局，不接受算法或压缩选项；拒绝覆盖已有输出。\n"
         "sample 仅生成 Header 与 Metadata 格式示例，不执行加密。\n";
 }
 
@@ -46,20 +54,51 @@ void print_info(const std::filesystem::path& path, const filecrypt::app::FileInf
         << "认证状态：" << (info.authenticated ? "已验证" : "未验证") << '\n';
 }
 
-/// 解析示例命令选项并调用 Application 生成样本。
+/// 拒绝同一选项的重复或冲突写法。
+void claim_option(std::set<std::string_view>& seen, std::string_view name) {
+    if (!seen.insert(name).second) {
+        throw std::invalid_argument("选项重复或冲突：" + std::string(name));
+    }
+}
+
+/// 读取当前选项的必需值，缺失时报告选项名称。
+std::string_view next_value(int& index, int argc, char** argv) {
+    if (index + 1 >= argc) {
+        throw std::invalid_argument("选项缺少值：" + std::string(argv[index]));
+    }
+    return argv[++index];
+}
+
+/// 将简短或完整算法名称转换为密码层算法枚举。
+filecrypt::crypto::Algorithm parse_algorithm(std::string_view value) {
+    if (value == "aes" || value == "aes-256-gcm") {
+        return filecrypt::crypto::Algorithm::aes256_gcm;
+    }
+    if (value == "xchacha" || value == "xchacha20-poly1305") {
+        return filecrypt::crypto::Algorithm::xchacha20_poly1305;
+    }
+    throw std::invalid_argument("不支持的算法名称：" + std::string(value));
+}
+
+/// 按固定输出路径及后续选项解析格式样本命令。
 void generate_sample(const std::filesystem::path& path, int argc, char** argv) {
     filecrypt::app::SampleOptions options;
+    std::set<std::string_view> seen;
     for (int i = 3; i < argc; ++i) {
         const std::string_view option = argv[i];
-        if (option == "--directory") {
+        if (option == "directory") {
+            claim_option(seen, "directory");
             options.directory = true;
-        } else if (option == "--compressed") {
-            options.compressed = true;
-        } else if (option == "--algorithm" && i + 1 < argc) {
-            const std::string_view algorithm = argv[++i];
-            options.algorithm = algorithm;
+        } else if (option == "compress" || option == "-z" || option == "no-compress") {
+            claim_option(seen, "compress/no-compress");
+            options.compressed = option != "no-compress";
+        } else if (option == "algorithm" || option == "-a") {
+            claim_option(seen, "algorithm");
+            const auto algorithm = parse_algorithm(next_value(i, argc, argv));
+            options.algorithm = algorithm == filecrypt::crypto::Algorithm::aes256_gcm
+                ? "aes-256-gcm" : "xchacha20-poly1305";
         } else {
-            throw std::invalid_argument("未知选项或缺少选项值");
+            throw std::invalid_argument("未知选项：" + std::string(option));
         }
     }
     filecrypt::app::generate_sample(path, options);
@@ -77,40 +116,67 @@ std::uint32_t parse_positive(std::string_view text) {
     return value;
 }
 
+/// 将解压输出字节上限严格解析为正的 64 位整数。
+std::uint64_t parse_output_limit(std::string_view text) {
+    std::uint64_t value{};
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (error != std::errc{} || end != text.data() + text.size() || value == 0) {
+        throw std::invalid_argument("解压输出上限必须是正的 64 位整数");
+    }
+    return value;
+}
+
+/// 将以 KiB 表示的二次幂窗口上限转换为 Zstandard 运行策略。
+std::uint32_t parse_window_log(std::string_view text) {
+    const auto kib = parse_positive(text);
+    if (!std::has_single_bit(kib) || kib > 1048576) {
+        throw std::invalid_argument("解压窗口 KiB 必须是 1 到 1048576 之间的二次幂");
+    }
+    return static_cast<std::uint32_t>(std::countr_zero(kib)) + 10;
+}
+
 /// 解析真实文件操作选项，读取安全密码并调用应用流程。
 void crypt_file(bool encrypting, int argc, char** argv) {
     if (argc < 4) {
         throw std::invalid_argument("需要指定输入和输出文件");
     }
     filecrypt::app::EncryptOptions options;
+    std::set<std::string_view> seen;
+    filecrypt::compression::DecompressionLimits decompression_limits;
     for (int i = 4; i < argc; ++i) {
         const std::string_view name = argv[i];
-        if (i + 1 >= argc) {
-            throw std::invalid_argument("选项缺少值");
-        }
-        const std::string_view value = argv[++i];
-        if (encrypting && name == "--algorithm") {
-            if (value == "aes-256-gcm") {
-                options.algorithm = filecrypt::crypto::Algorithm::aes256_gcm;
-            } else if (value == "xchacha20-poly1305") {
-                options.algorithm = filecrypt::crypto::Algorithm::xchacha20_poly1305;
-            } else {
-                throw std::invalid_argument("不支持的算法名称");
-            }
-        } else if (encrypting && name == "--memory-kib") {
-            options.kdf.memory_kib = parse_positive(value);
-        } else if (encrypting && name == "--iterations") {
-            options.kdf.iterations = parse_positive(value);
-        } else if (encrypting && name == "--parallelism") {
-            options.kdf.parallelism = parse_positive(value);
-        } else if (name == "--max-memory-kib") {
-            options.limits.max_memory_kib = parse_positive(value);
-        } else if (name == "--max-iterations") {
-            options.limits.max_iterations = parse_positive(value);
-        } else if (name == "--max-parallelism") {
-            options.limits.max_parallelism = parse_positive(value);
+        if (encrypting && (name == "algorithm" || name == "-a")) {
+            claim_option(seen, "algorithm");
+            options.algorithm = parse_algorithm(next_value(i, argc, argv));
+        } else if (encrypting && (name == "compress" || name == "-z" || name == "no-compress")) {
+            claim_option(seen, "compress/no-compress");
+            options.compressed = name != "no-compress";
+        } else if (encrypting && name == "memory-kib") {
+            claim_option(seen, name);
+            options.kdf.memory_kib = parse_positive(next_value(i, argc, argv));
+        } else if (encrypting && name == "iterations") {
+            claim_option(seen, name);
+            options.kdf.iterations = parse_positive(next_value(i, argc, argv));
+        } else if (encrypting && name == "parallelism") {
+            claim_option(seen, name);
+            options.kdf.parallelism = parse_positive(next_value(i, argc, argv));
+        } else if (name == "max-memory-kib") {
+            claim_option(seen, name);
+            options.limits.max_memory_kib = parse_positive(next_value(i, argc, argv));
+        } else if (name == "max-iterations") {
+            claim_option(seen, name);
+            options.limits.max_iterations = parse_positive(next_value(i, argc, argv));
+        } else if (name == "max-parallelism") {
+            claim_option(seen, name);
+            options.limits.max_parallelism = parse_positive(next_value(i, argc, argv));
+        } else if (!encrypting && name == "max-output-bytes") {
+            claim_option(seen, name);
+            decompression_limits.max_output_bytes = parse_output_limit(next_value(i, argc, argv));
+        } else if (!encrypting && name == "max-window-kib") {
+            claim_option(seen, name);
+            decompression_limits.max_window_log = parse_window_log(next_value(i, argc, argv));
         } else {
-            throw std::invalid_argument("未知或不适用于当前命令的选项");
+            throw std::invalid_argument("未知或不适用于当前命令的选项：" + std::string(name));
         }
     }
     const std::filesystem::path input = argv[2];
@@ -131,17 +197,17 @@ void crypt_file(bool encrypting, int argc, char** argv) {
         std::cout << "加密完成：" << display_filename(output) << '\n'
             << "警告：忘记密码将无法恢复文件，FileCrypt 无法重置或绕过密码。\n";
     } else {
-        filecrypt::app::decrypt_file(input, output, password, options.limits);
+        filecrypt::app::decrypt_file(input, output, password, options.limits, decompression_limits);
         password.clear();
         std::cout << "解密完成（认证通过）：" << display_filename(output) << '\n';
     }
 }
 }
 
-/// 分派示例生成与文件信息命令并将失败转换为非零退出码。
+/// 分派完整或简写命令并将失败转换为非零退出码。
 int main(int argc, char** argv) {
     try {
-        if (argc == 2 && std::string_view(argv[1]) == "--help") {
+        if (argc == 2 && (std::string_view(argv[1]) == "help" || std::string_view(argv[1]) == "-h")) {
             print_usage();
             return 0;
         }
@@ -151,14 +217,14 @@ int main(int argc, char** argv) {
         }
         const std::string_view command = argv[1];
         const std::filesystem::path path = argv[2];
-        if (command == "info" && argc == 3) {
+        if ((command == "info" || command == "-i") && argc == 3) {
             print_info(path, filecrypt::app::inspect_file(path));
         } else if (command == "sample") {
             generate_sample(path, argc, argv);
-        } else if (command == "encrypt" || command == "decrypt") {
-            crypt_file(command == "encrypt", argc, argv);
+        } else if (command == "encrypt" || command == "-e" || command == "decrypt" || command == "-d") {
+            crypt_file(command == "encrypt" || command == "-e", argc, argv);
         } else {
-            throw std::invalid_argument("未知命令或多余参数，请使用 --help 查看用法");
+            throw std::invalid_argument("未知命令或多余参数，请使用 help 或 -h 查看用法");
         }
         return 0;
     } catch (const filecrypt::crypto::AuthenticationError&) {
