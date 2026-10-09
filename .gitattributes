@@ -1,0 +1,4 @@
+# Linux 构建脚本和工作流必须保持 LF，避免 Windows 检出后容器无法执行。
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf

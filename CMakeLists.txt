@@ -7,12 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 add_subdirectory(src)
 
 # 默认构建包含正式程序及启用的测试；也提供明确的全量构建入口。
 if(BUILD_TESTING)
     add_subdirectory(tests)
-    add_custom_target(build_all DEPENDS filecrypt unit_tests)
+    add_custom_target(build_all DEPENDS filecrypt unit_tests integration_tests)
 else()
     add_custom_target(build_all DEPENDS filecrypt)
 endif()

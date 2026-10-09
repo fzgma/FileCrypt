@@ -7,4 +7,10 @@ namespace filecrypt::app::v1 {
 [[nodiscard]] FileInfo inspect(std::istream& input);
 /// 生成 v1 Header 与 Metadata 格式样本并写入新文件。
 void sample(const std::filesystem::path& path, const SampleOptions& options);
+/// 执行 v1 无压缩单文件加密及真实 Tag 写回。
+void encrypt(const std::filesystem::path& input, const std::filesystem::path& output,
+    std::span<const std::uint8_t> password, const EncryptOptions& options);
+/// 执行 v1 无压缩单文件解密，认证成功后提交临时输出。
+void decrypt(std::istream& input, const std::filesystem::path& output,
+    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits);
 }

@@ -33,4 +33,39 @@ void generate_sample(const std::filesystem::path& path, const SampleOptions& opt
     default: throw std::invalid_argument("Unsupported FileCrypt version");
     }
 }
+
+/// 校验输入类型并分发真实文件加密到显式指定的协议版本。
+void encrypt_file(const std::filesystem::path& input, const std::filesystem::path& output,
+    std::span<const std::uint8_t> password, const EncryptOptions& options) {
+    if (!std::filesystem::is_regular_file(input)) {
+        throw std::invalid_argument("Encryption input must be a regular file");
+    }
+    switch (options.version) {
+    case 1: v1::encrypt(input, output, password, options); return;
+    default: throw std::invalid_argument("Unsupported FileCrypt version");
+    }
+}
+
+/// 在最小识别前缀确认版本后分发真实文件解密。
+void decrypt_file(const std::filesystem::path& path, const std::filesystem::path& output,
+    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits) {
+    if (!std::filesystem::is_regular_file(path)) {
+        throw std::invalid_argument("Decryption input must be a regular file");
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("Cannot open input file");
+    }
+    std::array<std::byte, format::identification_size> prefix{};
+    io::read_exact(input, prefix);
+    const auto version = format::detect_version(prefix);
+    input.seekg(0);
+    if (!input) {
+        throw std::runtime_error("Cannot seek input file");
+    }
+    switch (version) {
+    case 1: v1::decrypt(input, output, password, limits); return;
+    default: throw std::invalid_argument("Unsupported FileCrypt version");
+    }
+}
 }

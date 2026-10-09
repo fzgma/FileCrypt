@@ -82,7 +82,29 @@ v1 的字段布局、Registry 和 AAD 实现属于 `filecrypt::format::v1`；未
 CLI 只依赖 Application；Application 调用 Format 和 IO；Format、IO 彼此独立。
 
 未来 Crypto 与 Compression 提供不依赖文件协议编号的基础能力，版本流程负责转换与编排。
-临时输出和清理由 IO 提供，允许提交的时机由版本流程决定；本轮尚未实现输出事务和加解密。
+临时输出和清理由 IO 提供，允许提交的时机由版本流程决定；当前已实现 v1 无压缩单文件加解密。
+
+当前 Crypto 内存能力已位于 `include/filecrypt/crypto/crypto.hpp` 与 `src/crypto/botan/`，
+由独立 `FileCrypt::Crypto` 库提供，依赖 Botan 而不依赖 Format、IO 或 Application。
+算法枚举表达密码操作，不等于文件协议 ID。密钥派生显式接收参数和调用者资源策略，
+当前提供 Argon2id 1.3 的 32 字节输出；安全容器基于 Botan 的安全分配器。
+
+`CipherContext` 的实现通过私有对象隔离 Botan AEAD 模式，消息大小计数在处理输入前检查，
+内部只缓存不足一个更新粒度的尾部。增量明文未经最终认证；高层内存 `decrypt`
+暂存明文，认证成功才返回，认证失败统一为 `AuthenticationError`。
+最终认证或处理失败后清理底层状态，拒绝任何再次使用。
+
+`src/app/v1/crypt.cpp` 负责无压缩单文件读写：加密生成随机 Salt/Nonce，
+构造 Header、Metadata 和 AAD，以 64 KiB 安全缓冲区流式处理，最后写回真实 Tag。
+解密保留原始 Header 与 Metadata 的认证字节，转换 v1 参数给 Crypto，
+未认证明文只写入 `io::OutputTransaction`，`finish` 成功后才提交。
+现阶段压缩和目录载荷明确拒绝，公开信息仍可读取这些模式。
+
+输出事务在目标同目录排他创建临时文件，POSIX 权限为 0600，Windows 使用只允许
+所有者和 SYSTEM 的受保护 DACL。写入、定位、刷新与不覆盖目标的提交由平台层完成，
+所有失败路径自动清理临时输出；提交竞态不允许替换已有路径。
+CLI 终端密码输入关闭回显，Windows 终端输入转换为 UTF-8，密码缓冲区使用安全容器。
+加密确认密码，解密单次输入，管道输入按行读取；最终目标参数策略仍属于运行配置。
 
 ---
 
@@ -724,7 +746,7 @@ Metadata
 最终输出使用临时文件：
 
 ```text
-output.fcry.tmp
+.filecrypt-随机后缀.tmp
 ```
 
 成功完成加密并写回 Header / Metadata 后，才提交为：

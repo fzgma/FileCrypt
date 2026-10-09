@@ -1,0 +1,70 @@
+name: 手动构建与测试
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux / x86-64 / glibc 2.34
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建静态 Botan 和通用 Linux 发布版
+        run: |
+          docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+            --env GITHUB_SHA --env GITHUB_SERVER_URL --env GITHUB_REPOSITORY --env GITHUB_RUN_ID \
+            quay.io/pypa/manylinux_2_28_x86_64 \
+            bash .github/scripts/build-linux.sh
+      - name: 在受支持发行版运行单元、冒烟和文件流程测试
+        run: |
+          set -euo pipefail
+          # 只列仍在维护的版本；版本进入 EOL 后从正式矩阵移除。
+          for image in ubuntu:22.04 ubuntu:24.04 debian:12 debian:13 almalinux:9 archlinux:base; do
+            docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+              "$image" bash .github/scripts/test-linux.sh "${image//:/-}"
+          done
+      - name: 在不满足 x86-64-v2 的模拟 CPU 上运行单元、冒烟和文件流程测试
+        run: |
+          docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
+            --env FILECRYPT_TEST_CPU=baseline \
+            ubuntu:22.04 bash .github/scripts/test-linux.sh ubuntu-22.04-baseline
+      - name: 仅保留 Linux 正式可执行文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: filecrypt-linux-x86_64
+          path: build/filecrypt
+          if-no-files-found: error
+          retention-days: 14
+
+  msvc:
+    name: Windows / MSVC x64
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: 使用 vcpkg 安装 Botan
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install botan:x64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin" >> $env:GITHUB_PATH
+      - name: 配置 Release
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows -DBUILD_TESTING=ON
+          -DCMAKE_CXX_FLAGS=/utf-8
+      - name: 编译正式程序与全部测试
+        run: cmake --build build --config Release --target build_all --parallel 2
+      - name: 运行单元测试
+        run: ctest --test-dir build -C Release -L unit --output-on-failure
+      - name: 运行正式程序冒烟测试
+        run: ctest --test-dir build -C Release -L smoke --output-on-failure
+      - name: 运行文件流程集成测试
+        run: ctest --test-dir build -C Release -R "^app_file_crypt$" --output-on-failure
