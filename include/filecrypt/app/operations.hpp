@@ -44,9 +44,10 @@ void generate_sample(const std::filesystem::path& path, const SampleOptions& opt
 /// 将普通单文件加密到新路径，成功后提交最终输出。
 void encrypt_file(const std::filesystem::path& input, const std::filesystem::path& output,
     std::span<const std::uint8_t> password, const EncryptOptions& options = {});
-/// 按文件版本认证并解密，受限解压成功后才提交输出。
-void decrypt_file(const std::filesystem::path& input, const std::filesystem::path& output,
+/// 按文件版本认证并解密，返回实际输出路径；可选恢复无后缀路径的登记扩展名。
+std::filesystem::path decrypt_file(const std::filesystem::path& input, const std::filesystem::path& output,
     std::span<const std::uint8_t> password,
     const crypto::KdfLimits& limits = {262144, 10, 16},
-    const compression::DecompressionLimits& decompression_limits = {});
+    const compression::DecompressionLimits& decompression_limits = {},
+    bool restore_extension = false);
 }

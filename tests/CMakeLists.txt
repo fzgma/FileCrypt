@@ -51,3 +51,15 @@ add_test(NAME cli_file_crypt COMMAND "${CMAKE_COMMAND}"
     "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/cli-crypt-test"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cli/crypt_test.cmake")
 set_tests_properties(cli_file_crypt PROPERTIES LABELS "integration;smoke")
+
+if(WIN32)
+    add_executable(console_test cli/console_test.cpp)
+    if(MINGW)
+        target_link_options(console_test PRIVATE -municode)
+    endif()
+    set_target_properties(console_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/integration")
+    add_dependencies(integration_tests console_test)
+    add_test(NAME cli_console_unicode COMMAND console_test "$<TARGET_FILE:filecrypt>")
+    set_tests_properties(cli_console_unicode PROPERTIES LABELS "integration;smoke" TIMEOUT 75)
+endif()

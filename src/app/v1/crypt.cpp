@@ -1,4 +1,5 @@
 #include "operations.hpp"
+#include "file_type.hpp"
 #include <filecrypt/format/v1/aad.hpp>
 #include <filecrypt/format/v1/registry.hpp>
 #include <filecrypt/io/file.hpp>
@@ -73,8 +74,6 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     header.version = 1;
     header.algorithm = algorithm_id(options.algorithm);
     header.flags = options.compressed ? compressed_flag : 0;
-    header.file_type = 0xFFFE;
-    header.metadata_length = format::metadata_layout(header).metadata_size;
     // AEAD 限制计数压缩后的字节，不能用原始大小提前拒绝可压缩输入。
     if (!options.compressed && std::filesystem::file_size(path) > crypto::message_limit(options.algorithm)) {
         throw std::length_error("File too large for selected AEAD");
@@ -83,6 +82,8 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     if (!input) {
         throw std::runtime_error("Cannot open input file");
     }
+    header.file_type = detect_file_type(path, input);
+    header.metadata_length = format::metadata_layout(header).metadata_size;
     format::Metadata metadata;
     if (options.compressed) {
         metadata.compression = format::CompressionMetadata{};
@@ -122,13 +123,15 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
 }
 
 /// 校验 v1 前缀并认证完整消息，按需解压后才提交明文。
-void decrypt(std::istream& input, const std::filesystem::path& destination,
+std::filesystem::path decrypt(std::istream& input, const std::filesystem::path& destination,
     std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
-    const compression::DecompressionLimits& decompression_limits) {
+    const compression::DecompressionLimits& decompression_limits, bool restore_extension) {
     std::array<std::byte, format::header_size> header_bytes{};
     io::read_exact(input, header_bytes);
     const auto header = format::deserialize(header_bytes);
     const auto layout = format::metadata_layout(header);
+    const auto resolved_destination = restore_extension
+        ? restore_file_extension(destination, header.file_type) : destination;
     if ((header.flags & directory_flag) != 0) {
         throw std::invalid_argument("File decryption currently supports only single files");
     }
@@ -146,14 +149,14 @@ void decrypt(std::istream& input, const std::filesystem::path& destination,
         format::algorithm_definition(header.algorithm).key_size);
     crypto::CipherContext cipher(algorithm, crypto::Direction::decrypt, key,
         crypto_bytes(metadata.nonce), aad);
-    io::OutputTransaction output(destination);
+    io::OutputTransaction output(resolved_destination);
     process_stream(input, cipher, output);
     const auto final = cipher.finish(crypto_bytes(metadata.tag));
     output.write(std::as_bytes(std::span(final.output)));
     if ((header.flags & compressed_flag) != 0) {
         // 只有 finish 验证通过，压缩载荷才允许进入解压器；中间事务始终不发布。
         output.seek(0);
-        io::OutputTransaction restored(destination);
+        io::OutputTransaction restored(resolved_destination);
         compression::decompress(
             [&](std::span<std::byte> bytes) { return output.read(bytes); },
             [&](std::span<const std::byte> bytes) { restored.write(bytes); }, decompression_limits);
@@ -161,5 +164,6 @@ void decrypt(std::istream& input, const std::filesystem::path& destination,
     } else {
         output.commit();
     }
+    return resolved_destination;
 }
 }

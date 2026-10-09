@@ -225,7 +225,7 @@ void test_invalid_fields() {
     }
     const auto single_header = sample_header(1, 0);
     const auto single_metadata = sample_metadata(single_header);
-    for (const auto type : {std::uint16_t{0}, std::uint16_t{1},
+    for (const auto type : {std::uint16_t{0}, std::uint16_t{0x0025},
                            std::uint16_t{0xFFFD}, std::uint16_t{0xFFFF}}) {
         auto invalid_header = single_header;
         invalid_header.file_type = type;
@@ -276,6 +276,32 @@ void test_boundaries() {
             "Maximum fields boundary mismatch");
     }
 }
+
+void test_file_types() {
+    constexpr std::string_view extensions[]{"txt", "md", "csv", "json", "xml", "yaml", "yml", "pdf",
+        "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "zip", "7z", "rar",
+        "tar", "gz", "bz2", "xz", "zst", "mp3", "wav", "flac", "mp4", "mkv", "mov", "avi",
+        "tar.gz", "tar.bz2", "tar.xz", "tar.zst"};
+    for (std::size_t i = 0; i < std::size(extensions); ++i) {
+        const auto id = static_cast<std::uint16_t>(i + 1);
+        require(file_type_definition(id).extension == extensions[i] && file_type_id(extensions[i]) == id,
+            "File type ID mapping mismatch");
+        for (const auto flags : {std::uint16_t{0}, std::uint16_t{0x4000}}) {
+            auto header = sample_header(1, flags);
+            header.file_type = id;
+            const auto metadata = sample_metadata(header);
+            require(deserialize_metadata(header, serialize_metadata(header, metadata)) == metadata,
+                "Registered file type was rejected");
+        }
+        auto directory = sample_header(1, 0x8000);
+        directory.file_type = id;
+        require_invalid([&] { (void)metadata_layout(directory); });
+    }
+    require(file_type_id("custom") == 0xFFFE && file_type_id("") == 0xFFFE,
+        "Unregistered extension must be Unknown");
+    require_invalid([] { (void)file_type_definition(0x0025); });
+    require_invalid([] { (void)file_type_definition(0xFFFF); });
+}
 }
 
 /// 执行全部 Metadata 测试并通过退出码报告结果。
@@ -286,6 +312,7 @@ int main() {
         test_lengths();
         test_invalid_fields();
         test_boundaries();
+        test_file_types();
         std::cout << "Metadata tests passed\n";
         return 0;
     } catch (const std::exception& error) {

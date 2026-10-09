@@ -33,7 +33,8 @@ FileInfo inspect(std::istream& input) {
         info.compression = compression_definition(metadata.compression->id).name;
     }
     info.directory = metadata.index_length.has_value();
-    info.file_type = info.directory ? "N/A" : "Unknown";
+    const auto extension = file_type_definition(header.file_type).extension;
+    info.file_type = info.directory ? "N/A" : extension.empty() ? "Unknown" : std::string(extension);
     info.kdf = kdf_definition(metadata.kdf_id).name;
     info.has_payload = has_payload;
     info.details = {

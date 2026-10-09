@@ -277,11 +277,12 @@ Size：
 
 ### File Type Registry
 
-当前仅定义特殊值，具体普通文件类型 ID 暂不注册。
+具体扩展名映射及复合后缀规则见 [v1 Registry](REGISTRY_V1.md)。
 
 ```text
 0x0000 = N/A
-0x0001 ~ 0xFFFD = 由未来 File Type Registry 定义
+0x0001 ~ 0x0024 = 已登记扩展名
+0x0025 ~ 0xFFFD = 尚未分配
 0xFFFE = Unknown
 0xFFFF = Invalid
 ```
@@ -290,7 +291,7 @@ Size：
 
 当 `Flags.Bit15 = 0` 时，File Type 表示加密前原始文件的类型。
 
-v1 尚未分配具体普通文件类型 ID，Single File 使用 `0xFFFE` 表示 Unknown。`0x0000` 表示 N/A，仅用于 Directory Archive；`0xFFFF` 表示 Invalid，不得写入有效文件。
+Single File 使用已登记扩展名编号，或以 `0xFFFE` 表示 Unknown。未分配编号严格拒绝。`0x0000` 表示 N/A，仅用于 Directory Archive；`0xFFFF` 表示 Invalid，不得写入有效文件。该字段属于公开 Header，并参与 AAD 认证。
 
 ### Directory Archive
 

@@ -7,6 +7,8 @@
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <string_view>
+#include <cstdio>
 
 namespace {
 using namespace filecrypt;
@@ -285,6 +287,110 @@ void transaction_tests(const std::filesystem::path& directory) {
     check(read_file(target) == crypto::Bytes({1, 9, 3}), "Seek or commit failed");
     check_no_temporary(directory);
 }
+
+/// 验证实际加密 Header、原始后缀优先、复合后缀恢复及受认证的类型信息。
+void file_type_tests(const std::filesystem::path& directory) {
+    using namespace std::string_view_literals;
+    constexpr std::string_view extensions[]{"txt", "md", "csv", "json", "xml", "yaml", "yml", "pdf",
+        "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "zip", "7z", "rar",
+        "tar", "gz", "bz2", "xz", "zst", "mp3", "wav", "flac", "mp4", "mkv", "mov", "avi",
+        "tar.gz", "tar.bz2", "tar.xz", "tar.zst"};
+    const crypto::SecureBytes password{'t', 'e', 's', 't'};
+    app::EncryptOptions options;
+    options.kdf = {8192, 1, 1};
+    const auto encrypted = directory / "typed.fcry";
+    const auto output = directory / "typed-restored";
+    const crypto::Bytes content{0x89, 'P', 'N', 'G', 13, 10, 0x1A, 10, 42};
+    auto verify = [&](const std::filesystem::path& source, const crypto::Bytes& bytes,
+            std::uint16_t id, std::string_view extension) {
+        write_file(source, bytes);
+        std::filesystem::remove(encrypted);
+        app::encrypt_file(source, encrypted, password, options);
+        const auto ciphertext = read_file(encrypted);
+        check(ciphertext[10] == (id & 255) && ciphertext[11] == (id >> 8), "Wrong File Type Header ID");
+        check(app::inspect_file(encrypted).file_type == (extension.empty() ? "Unknown" : extension),
+            "File Type info mismatch");
+        auto expected = output;
+        if (!extension.empty()) expected += "." + std::string(extension);
+        std::filesystem::remove(expected);
+        std::filesystem::remove(output);
+        const auto actual = app::decrypt_file(encrypted, output, password, options.limits, {}, true);
+        check(actual == expected && read_file(actual) == bytes, "Extension restoration or input replay failed");
+        if (actual != output) check(!std::filesystem::exists(output), "Suffixless plaintext was published");
+        rejects([&] { app::decrypt_file(encrypted, output, password, options.limits, {}, true); });
+        check(read_file(expected) == bytes, "Restoration overwrote existing output");
+        std::filesystem::remove(expected);
+    };
+    for (std::size_t i = 0; i < std::size(extensions); ++i) {
+        std::string upper(extensions[i]);
+        for (auto& c : upper) if (c >= 'a' && c <= 'z') c -= 'a' - 'A';
+        options.compressed = (i % 2) != 0;
+        verify(directory / ("type." + upper), content, static_cast<std::uint16_t>(i + 1), extensions[i]);
+    }
+    verify(directory / "photo.png.jpg", content, 0x000A, "jpg");
+    verify(directory / "archive.tar.gz.jpg", content, 0x000A, "jpg");
+    verify(directory / "archive.custom.gz", content, 0x0016, "gz");
+    verify(directory / "photo.custom", content, 0xFFFE, "");
+    verify(directory / "photo.", content, 0xFFFE, "");
+
+    // 独立 magic 向量；扩展名未登记时同样内容也必须保持 Unknown。
+    struct Magic { std::string_view bytes; std::uint16_t id; std::string_view extension; };
+    constexpr Magic samples[]{
+        {"\x89PNG\r\n\x1a\n"sv, 0x0009, "png"}, {"\xff\xd8\xff"sv, 0x000A, "jpg"},
+        {"GIF87a", 0x000C, "gif"}, {"GIF89a", 0x000C, "gif"}, {"BM", 0x000D, "bmp"},
+        {"II\x2a\0"sv, 0x0010, "tif"}, {"MM\0\x2a"sv, 0x0010, "tif"}, {"%PDF-", 0x0008, "pdf"},
+        {"PK\x03\x04"sv, 0x0012, "zip"}, {"PK\x05\x06"sv, 0x0012, "zip"},
+        {"7z\xbc\xaf\x27\x1c"sv, 0x0013, "7z"}, {"Rar!\x1a\x07\0"sv, 0x0014, "rar"},
+        {"Rar!\x1a\x07\x01\0"sv, 0x0014, "rar"}, {"\x1f\x8b\x08"sv, 0x0016, "gz"},
+        {"BZh9", 0x0017, "bz2"}, {"\xfd" "7zXZ\0"sv, 0x0018, "xz"},
+        {"\x28\xb5\x2f\xfd"sv, 0x0019, "zst"}, {"ID3", 0x001A, "mp3"}, {"fLaC", 0x001C, "flac"},
+        {"RIFF\0\0\0\0WEBP"sv, 0x000E, "webp"}, {"RIFF\0\0\0\0WAVE"sv, 0x001B, "wav"},
+        {"RIFF\0\0\0\0AVI "sv, 0x0020, "avi"},
+        {"\0\0\0\x10" "ftypisom\0\0\0\0"sv, 0x001D, "mp4"},
+        {"\0\0\0\x10" "ftypqt  \0\0\0\0"sv, 0x001F, "mov"},
+        {"\x1a\x45\xdf\xa3\x8b\x42\x82\x88matroska"sv, 0x001E, "mkv"},
+        {"\x1a\x45\xdf\xa3\x87\x42\x82\x84webm"sv, 0xFFFE, ""},
+        {"\x1a\x45\xdf\xa3\x80"sv, 0xFFFE, ""},
+        {"\x1a\x45\xdf\xa3\x81\0"sv, 0xFFFE, ""},
+        {"\0\0\0\x10" "ftypavif\0\0\0\0"sv, 0xFFFE, ""},
+        {"BZh0", 0xFFFE, ""}, {"\x89PNG"sv, 0xFFFE, ""}, {"plain text", 0xFFFE, ""}, {"", 0xFFFE, ""}};
+    for (const auto& sample : samples) {
+        const crypto::Bytes bytes(sample.bytes.begin(), sample.bytes.end());
+        verify(directory / "magic-source", bytes, sample.id, sample.extension);
+        verify(directory / "magic-source.custom", bytes, 0xFFFE, "");
+    }
+    auto large = content;
+    large.resize(65537, 42);
+    verify(directory / "magic-source", large, 0x0009, "png");
+    crypto::Bytes tar(512);
+    std::copy_n("ustar", 5, tar.begin() + 257);
+    unsigned checksum = 8 * ' ';
+    for (const auto byte : tar) checksum += byte;
+    char octal[8]{};
+    std::snprintf(octal, sizeof(octal), "%06o", checksum);
+    std::copy_n(octal, 7, tar.begin() + 148);
+    tar[155] = ' ';
+    verify(directory / "magic-source", tar, 0x0015, "tar");
+    tar[0] = 1;
+    verify(directory / "magic-source", tar, 0xFFFE, "");
+
+    // 有效编号改成另一个有效编号，格式仍合法但认证必须失败。
+    verify(directory / "typed.txt", content, 1, "txt");
+    // 库调用默认使用明确指定的路径；只有 CLI 等显式请求才恢复后缀。
+    const auto literal = directory / "literal-output";
+    std::filesystem::remove(literal);
+    check(app::decrypt_file(encrypted, literal, password, options.limits) == literal &&
+        read_file(literal) == content, "Library unexpectedly changed explicit output path");
+    auto changed = read_file(encrypted);
+    changed[10] = 2;
+    write_file(encrypted, changed);
+    const auto tampered_output = directory / "tampered-type";
+    std::filesystem::remove(directory / "tampered-type.md");
+    rejects([&] { app::decrypt_file(encrypted, tampered_output, password, options.limits, {}, true); });
+    check(!std::filesystem::exists(tampered_output) && !std::filesystem::exists(directory / "tampered-type.md"),
+        "Tampered type published plaintext");
+    check_no_temporary(directory);
+}
 }
 
 /// 在专用构建目录执行文件流程与输出事务端到端测试。
@@ -296,6 +402,7 @@ int main(int argc, char** argv) {
         file_tests(directory);
         compressed_file_tests(directory);
         transaction_tests(directory);
+        file_type_tests(directory);
         std::cout << "File encryption tests passed\n";
         return 0;
     } catch (const std::exception& error) {

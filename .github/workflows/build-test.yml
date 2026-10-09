@@ -63,7 +63,6 @@ jobs:
           -DBUILD_TESTING=ON -DCMAKE_CONFIGURATION_TYPES=Release
           -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
           -DBotan_USE_STATIC_LIBS=ON -DZstd_USE_STATIC_LIBS=ON
-          -DCMAKE_CXX_FLAGS=/utf-8
       - name: 编译正式程序与全部测试
         run: cmake --build build --config Release --target build_all --parallel 2
       - name: 运行单元测试

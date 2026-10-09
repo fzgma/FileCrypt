@@ -35,11 +35,10 @@ target_link_libraries(filecrypt_compression PRIVATE Zstd::Zstd)
 target_compile_features(filecrypt_compression PUBLIC cxx_std_23)
 
 # 应用层拥有版本分发与流程编排，CLI 不直接依赖版本格式类型。
-add_library(filecrypt_app app/operations.cpp app/v1/operations.cpp app/v1/crypt.cpp)
+add_library(filecrypt_app app/operations.cpp app/v1/operations.cpp app/v1/crypt.cpp app/v1/file_type.cpp)
 add_library(FileCrypt::App ALIAS filecrypt_app)
 target_include_directories(filecrypt_app PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(filecrypt_app PRIVATE FileCrypt::Format FileCrypt::IO FileCrypt::Compression PUBLIC FileCrypt::Crypto)
 target_compile_features(filecrypt_app PUBLIC cxx_std_23)
-target_compile_options(filecrypt_app PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
 add_subdirectory(cli)

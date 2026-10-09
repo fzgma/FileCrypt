@@ -24,8 +24,9 @@ void validate_context(const Header& header) {
         [](std::byte value) { return value == std::byte{0}; }),
         "Reserved header bytes must be zero");
     const bool directory = (header.flags & directory_flag) != 0;
-    check(directory ? header.file_type == 0 : header.file_type == 0xFFFE,
-        "Unsupported or invalid v1 file type for container");
+    check(directory ? header.file_type == 0 : header.file_type != 0,
+        "Invalid v1 file type for container");
+    (void)file_type_definition(header.file_type);
 }
 
 /// 校验 Argon2id 的协议参数而不执行密钥派生。

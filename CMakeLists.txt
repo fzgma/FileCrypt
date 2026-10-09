@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# 输出事务与敏感内存依赖 C++ 异常展开；不可用编码选项覆盖 MSVC 默认标志。
+# 统一作用于全部库、CLI 与测试，并将缺少展开语义的警告视为错误。
+add_compile_options(
+    "$<$<CXX_COMPILER_ID:MSVC>:/EHsc>"
+    "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>"
+    "$<$<CXX_COMPILER_ID:MSVC>:/we4530>")
+
 include(CTest)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 add_subdirectory(src)

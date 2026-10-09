@@ -339,7 +339,7 @@ Zstandard Frame 本身包含解压所需的信息，解压端不需要知道创�
 
 # 5. File Type Registry
 
-File Type 用于描述 Single File Container 中原始文件的类型。
+File Type 用于记录 Single File Container 的已登记原始扩展名；没有扩展名时可由有界 magic 检测给出默认扩展名。它是公开的、受 AAD 认证保护的提示，不保证文件内容符合对应格式。
 
 Header 中：
 
@@ -374,9 +374,48 @@ File Type = 0x0000
 
 ### `0x0001 ~ 0xFFFD`
 
-保留给未来 File Type Registry。
+当前分配如下；扩展名不含开头的点，编号不得重新解释或复用。
 
-v1 不对这些值分配具体文件类型；当前实现遇到这些未分配值时报告“不支持”。Single File 当前使用 `0xFFFE`，Directory Archive 必须使用 `0x0000`。
+| ID | 扩展名 | ID | 扩展名 |
+| --- | --- | --- | --- |
+| `0x0001` | txt | `0x0013` | 7z |
+| `0x0002` | md | `0x0014` | rar |
+| `0x0003` | csv | `0x0015` | tar |
+| `0x0004` | json | `0x0016` | gz |
+| `0x0005` | xml | `0x0017` | bz2 |
+| `0x0006` | yaml | `0x0018` | xz |
+| `0x0007` | yml | `0x0019` | zst |
+| `0x0008` | pdf | `0x001A` | mp3 |
+| `0x0009` | png | `0x001B` | wav |
+| `0x000A` | jpg | `0x001C` | flac |
+| `0x000B` | jpeg | `0x001D` | mp4 |
+| `0x000C` | gif | `0x001E` | mkv |
+| `0x000D` | bmp | `0x001F` | mov |
+| `0x000E` | webp | `0x0020` | avi |
+| `0x000F` | svg | `0x0021` | tar.gz |
+| `0x0010` | tif | `0x0022` | tar.bz2 |
+| `0x0011` | tiff | `0x0023` | tar.xz |
+| `0x0012` | zip | `0x0024` | tar.zst |
+
+`0x0025 ~ 0xFFFD` 尚未分配，读取时严格报告“不支持”。Single File 使用已登记编号或 `0xFFFE`；Directory Archive 必须使用 `0x0000`。
+
+### 扩展名选择与恢复
+
+- 匹配时只对 ASCII 大写字母转小写，恢复时使用表中的小写后缀。
+- 优先匹配最长的已登记复合后缀；其他名称只取最后一段。例如 `backup.tar.gz` 记录 `tar.gz`，`photo.png.jpg` 和 `backup.tar.gz.jpg` 记录 `jpg`。
+- 有扩展名时以扩展名为准，未登记则记 `Unknown`，不再检测内容。
+- 无扩展名时有界读取文件头检测 magic，未命中记 `Unknown`。JPEG 默认选 `jpg`，TIFF 默认选 `tif`；压缩格式只判断外层，不解压推断 `tar.gz` 等复合后缀。
+- 类型编号不保存原始大小写、任意扩展名字符串、完整文件名或路径。
+- CLI 解密输出无扩展名时补上已登记后缀；显式后缀保留，Unknown 不补。类型由同一次解密读取的 Header 决定，认证和解压完成前不发布输出。
+
+### 当前 magic 实现范围
+
+识别逻辑属于版本应用层，不由 Format 执行。最多读取文件头 512 bytes，并恢复原输入流位置；文件头暂存使用安全容器，不解压、不扫描整个文件。支持 PNG、JPEG、GIF、BMP、TIFF、PDF、ZIP、7z、RAR、gzip、bzip2、xz、Zstandard、带 ID3 前缀的 MP3、FLAC，以及 RIFF 下的 WebP/WAV/AVI。
+
+MP4/QuickTime 仅识别 `ftyp` 与已知 major brand：`isom`、`iso2`、`mp41`、`mp42`、`avc1`、`M4V ` 对应 `mp4`，`qt  ` 对应 `mov`；不把任意 ISO BMFF（例如 AVIF）映射为 MP4。Matroska 要求有界 EBML Header 的 DocType 为 `matroska`，WebM 不映射为 MKV。TAR 要求完整 512-byte 首块、ustar 标识与合法校验和。
+
+未覆盖的变体和无明确 magic 的文本类型保持 Unknown；扩展名登记不表示一定有 magic 检测规则。检测只提供后缀提示，不执行完整内容格式校验。
+签名参考 [file 项目的图像规则](https://github.com/file/file/blob/master/magic/Magdir/images)、[压缩规则](https://github.com/file/file/blob/master/magic/Magdir/compress)、[RIFF 规则](https://github.com/file/file/blob/master/magic/Magdir/riff)和[归档规则](https://github.com/file/file/blob/master/magic/Magdir/archive)。实现不引入 libmagic 依赖。
 
 ### `0xFFFE` — Unknown
 
@@ -564,7 +603,8 @@ Compression
 
 File Type
     0x0000 = N/A
-    0x0001 ~ 0xFFFD = Future Registry
+    0x0001 ~ 0x0024 = Registered Extensions
+    0x0025 ~ 0xFFFD = Future Registry
     0xFFFE = Unknown
     0xFFFF = Invalid
 ```

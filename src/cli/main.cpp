@@ -7,8 +7,74 @@
 #include <string>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace {
+/// CLI 参数统一使用 UTF-8，避免 Windows 按当前 ANSI 代码页解释路径。
+std::filesystem::path argument_path(std::string_view text) {
+    return std::filesystem::path(std::u8string(text.begin(), text.end()));
+}
+
+/// 仅为没有扩展名的密文文件路径补充默认后缀。
+std::filesystem::path ciphertext_path(std::filesystem::path path) {
+    if (path.has_filename() && path.filename() != "." && path.filename() != ".." &&
+        !path.has_extension()) {
+        path += ".fcry";
+    }
+    return path;
+}
+
+#ifdef _WIN32
+/// 仅在连接真实控制台时切换输出代码页，退出前刷新输出并恢复原设置。
+class ConsoleOutputGuard {
+    UINT original_{};
+public:
+    ConsoleOutputGuard() {
+        DWORD mode{};
+        if (GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &mode) ||
+            GetConsoleMode(GetStdHandle(STD_ERROR_HANDLE), &mode)) {
+            original_ = GetConsoleOutputCP();
+            if (original_ == 0 || !SetConsoleOutputCP(CP_UTF8)) {
+                throw std::runtime_error("Cannot configure UTF-8 console output");
+            }
+        }
+    }
+    ~ConsoleOutputGuard() {
+        std::cout.flush();
+        std::cerr.flush();
+        if (original_ != 0) {
+            SetConsoleOutputCP(original_);
+        }
+    }
+};
+
+/// 无损转换 Windows 原生命令行；非法 UTF-16 明确失败。
+std::string argument_utf8(const wchar_t* text) {
+    const int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1,
+        nullptr, 0, nullptr, nullptr);
+    if (size == 0) {
+        throw std::invalid_argument("Invalid Unicode command-line argument");
+    }
+    std::string result(static_cast<std::size_t>(size), '\0');
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1,
+            result.data(), size, nullptr, nullptr) != size) {
+        throw std::runtime_error("Command-line UTF-8 conversion failed");
+    }
+    result.pop_back();
+    return result;
+}
+#endif
+
 /// 显示完整命令、简写和固定路径位置的用法。
 void print_usage() {
     std::cout << "用法：\n"
@@ -18,6 +84,8 @@ void print_usage() {
         "  filecrypt sample <文件路径> [algorithm|-a aes|xchacha] [directory] [compress|-z|no-compress]\n"
         "  filecrypt help|-h\n"
         "完整名称不带横线，简写带单横线；加解密的前两个参数固定为输入、输出路径。\n"
+        "加密输出、解密输入未指定后缀时自动补 .fcry；已有后缀原样保留。\n"
+        "解密输出未指定后缀时补上记录的扩展名（含 tar.gz 等复合后缀）；Unknown 不补。\n"
         "加密选项：algorithm|-a aes|xchacha（默认 aes），compress|-z 或 no-compress（默认）\n"
         "算法值也接受 aes-256-gcm 和 xchacha20-poly1305。\n"
         "加密参数：memory-kib N iterations N parallelism N\n"
@@ -179,8 +247,8 @@ void crypt_file(bool encrypting, int argc, char** argv) {
             throw std::invalid_argument("未知或不适用于当前命令的选项：" + std::string(name));
         }
     }
-    const std::filesystem::path input = argv[2];
-    const std::filesystem::path output = argv[3];
+    const auto input = encrypting ? argument_path(argv[2]) : ciphertext_path(argument_path(argv[2]));
+    const auto output = encrypting ? ciphertext_path(argument_path(argv[3])) : argument_path(argv[3]);
     auto password = filecrypt::io::read_password("密码：");
     if (password.empty()) {
         throw std::invalid_argument("密码不能为空");
@@ -197,15 +265,16 @@ void crypt_file(bool encrypting, int argc, char** argv) {
         std::cout << "加密完成：" << display_filename(output) << '\n'
             << "警告：忘记密码将无法恢复文件，FileCrypt 无法重置或绕过密码。\n";
     } else {
-        filecrypt::app::decrypt_file(input, output, password, options.limits, decompression_limits);
+        const auto restored = filecrypt::app::decrypt_file(input, output, password,
+            options.limits, decompression_limits, true);
         password.clear();
-        std::cout << "解密完成（认证通过）：" << display_filename(output) << '\n';
+        std::cout << "解密完成（认证通过）：" << display_filename(restored) << '\n';
     }
 }
 }
 
 /// 分派完整或简写命令并将失败转换为非零退出码。
-int main(int argc, char** argv) {
+int run_cli(int argc, char** argv) {
     try {
         if (argc == 2 && (std::string_view(argv[1]) == "help" || std::string_view(argv[1]) == "-h")) {
             print_usage();
@@ -216,7 +285,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         const std::string_view command = argv[1];
-        const std::filesystem::path path = argv[2];
+        const auto path = argument_path(argv[2]);
         if ((command == "info" || command == "-i") && argc == 3) {
             print_info(path, filecrypt::app::inspect_file(path));
         } else if (command == "sample") {
@@ -235,3 +304,31 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+
+#ifdef _WIN32
+/// MSVC 与 MinGW 使用原生宽字符入口，路径不依赖系统 ANSI 代码页。
+int wmain(int argc, wchar_t** argv) {
+    try {
+        ConsoleOutputGuard console;
+        std::vector<std::string> arguments;
+        arguments.reserve(static_cast<std::size_t>(argc));
+        for (int i = 0; i < argc; ++i) {
+            arguments.push_back(argument_utf8(argv[i]));
+        }
+        std::vector<char*> pointers;
+        pointers.reserve(arguments.size() + 1);
+        for (auto& argument : arguments) {
+            pointers.push_back(argument.data());
+        }
+        pointers.push_back(nullptr);
+        return run_cli(argc, pointers.data());
+    } catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << '\n';
+        return 1;
+    }
+}
+#else
+int main(int argc, char** argv) {
+    return run_cli(argc, argv);
+}
+#endif

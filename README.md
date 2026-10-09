@@ -1,22 +1,125 @@
 # FileCrypt
 
-使用 C++23 编写的跨平台文件加密工具，已支持 v1 可选 Zstandard 压缩的单文件加解密、公开信息读取与格式示例生成。
+> 使用密码加密和恢复本地文件的跨平台 C++23 命令行工具。
 
-v1 格式层已提供 AAD 构造：`build_aad(header, metadata)` 用于逻辑对象，
-`build_aad(header_bytes, metadata_bytes)` 用于原始文件字节。两者均校验格式，
-包含 Header、Metadata 字段和 Padding，排除末尾 Tag；原始字节入口不重新编码认证内容。
-文件加解密流程使用该认证输入保护 Header、Metadata 和密文。
+FileCrypt 支持 **单文件加解密、可选 Zstandard 压缩、公开信息查看和扩展名恢复**，使用 Argon2id 派生密钥，并通过 AEAD 验证文件完整性。
 
-## 构建与测试
+面向 Windows 和 Linux，目前提供 CLI。下载入口：[GitHub Releases](https://github.com/fzgma/FileCrypt/releases)。构建与发布验证进度见 [TODO](docs/TODO.md)。
 
-需要 CMake >= 3.24、C++23 编译器、Botan 3（AES/GCM、ChaCha20Poly1305、Argon2id、AutoSeeded_RNG）和 Zstandard >= 1.5.2。
+## 1. 功能
 
-Botan 必须与编译器工具链兼容：MinGW 使用 MinGW 构建的库，MSVC 使用 MSVC 构建的库。
-非默认安装位置可传入 `-DCMAKE_PREFIX_PATH=<安装前缀>`；Windows 运行密码层测试时将
-Botan 和 Zstandard DLL 目录加入 PATH，运行正式程序也需要这些 DLL；Linux 非系统安装按需设置 LD_LIBRARY_PATH。
-普通开发构建默认使用共享库；Linux 发布流程从源码构建静态 Botan 和 Zstandard，并读取其 pkg-config 静态传递依赖。
+* **文件加密**：将普通文件加密为 `.fcry` 容器
+* **文件解密**：验证认证标签，成功后发布恢复文件
+* **算法选择**：AES-256-GCM / XChaCha20-Poly1305
+* **密码派生**：Argon2id，每个文件使用独立随机 Salt 与 Nonce
+* **可选压缩**：加密前执行 Zstandard 压缩，解密自动识别
+* **扩展名恢复**：登记 36 种后缀，支持 `.tar.gz` 等复合后缀
+* **文件识别**：扩展名优先，无后缀时通过有界 magic 检测识别部分格式
+* **信息查看**：无需密码查看版本、算法、压缩状态、扩展名和 KDF 参数
+* **输出保护**：拒绝覆盖已有目标，使用受限权限临时文件处理输出
+* **Unicode 路径**：支持中文、空格和 emoji 文件名
 
-使用 Ninja，将整个项目构建到 `build/`：
+## 2. 快速开始
+
+### Windows
+
+下载 Windows 程序后，可将 `filecrypt-windows-x86_64.exe` 重命名为 `filecrypt.exe`。
+
+```powershell
+# 加密：生成 backup.fcry
+.\filecrypt.exe -e photo.png backup
+
+# 解密：读取 backup.fcry，恢复为 restored.png
+.\filecrypt.exe -d backup restored
+
+# 查看公开信息
+.\filecrypt.exe -i backup.fcry
+
+# 查看帮助
+.\filecrypt.exe -h
+```
+
+加密时输入并确认密码，解密时输入一次；终端密码输入隐藏回显。
+
+**忘记密码将无法恢复文件，FileCrypt 无法重置或绕过密码。**
+
+### Linux
+
+下载 Linux 程序后赋予执行权限：
+
+```bash
+chmod +x filecrypt-linux-x86_64
+./filecrypt-linux-x86_64 -e photo.png backup
+./filecrypt-linux-x86_64 -d backup restored
+./filecrypt-linux-x86_64 -h
+```
+
+Linux 发布目标为 x86-64、glibc 2.34+；正式支持仍在维护的发行版，暂不支持 Alpine/musl。
+
+## 3. 命令与选项
+
+| 命令 | 简写 | 用途 |
+| --- | --- | --- |
+| `encrypt` | `-e` | 加密文件 |
+| `decrypt` | `-d` | 解密文件 |
+| `info` | `-i` | 查看公开信息 |
+| `help` | `-h` | 查看帮助 |
+| `sample` | — | 生成格式示例，不执行真实加密 |
+
+加解密命令后的前两个参数固定为输入、输出路径，其后才解析选项。完整命令和选项不带横线，简写带单横线。
+
+### 算法与压缩
+
+默认使用 AES-256-GCM，不压缩。
+
+```powershell
+# 使用 XChaCha20-Poly1305
+.\filecrypt.exe -e input.txt backup -a xchacha
+
+# 启用 Zstandard 压缩
+.\filecrypt.exe -e input.txt backup -z
+
+# 完整写法
+.\filecrypt.exe encrypt input.txt backup algorithm aes compress
+```
+
+解密自动读取算法与压缩状态，无需重复指定这些选项。
+
+### 后缀处理
+
+* 加密输出没有后缀时补 `.fcry`；解密输入同理。
+* 解密输出没有后缀时，补上文件中记录的扩展名；`Unknown` 保持无后缀。
+* 用户显式指定的后缀原样保留。
+* 扩展名匹配忽略 ASCII 大小写，恢复时使用小写后缀。
+* 已登记复合后缀优先匹配：`.tar.gz`、`.tar.bz2`、`.tar.xz`、`.tar.zst`。
+* 其余只取最后一段，例如 `photo.png.jpg` 记录 `jpg`。
+
+```powershell
+.\filecrypt.exe -e archive.tar.gz backup
+.\filecrypt.exe -d backup restored        # restored.tar.gz
+.\filecrypt.exe -d backup restored.bin    # restored.bin
+```
+
+### 资源限制
+
+| 参数 | 当前默认值 | 用途 |
+| --- | --- | --- |
+| `memory-kib` | 65536 | 加密 Argon2id 内存成本 |
+| `iterations` | 3 | 加密 Argon2id 迭代次数 |
+| `parallelism` | 1 | 加密 Argon2id 并行度 |
+| `max-memory-kib` | 262144 | KDF 内存上限 |
+| `max-iterations` | 10 | KDF 迭代上限 |
+| `max-parallelism` | 16 | KDF 并行度上限 |
+| `max-output-bytes` | 16 GiB | 累计解压输出上限 |
+| `max-window-kib` | 65536 | 解压窗口上限 |
+
+这些是可调整的运行策略；实际 KDF 参数写入文件，解密时按记录值派生密钥。解压上限只约束压缩载荷，更多说明见 [压缩实现](docs/COMPRESSION.md)。
+
+## 4. 从源码构建
+
+要求 **CMake 3.24+、C++23 编译器、Botan 3 和 Zstandard 1.5.2+**。
+
+Botan 必须与编译器工具链兼容；依赖安装在非默认位置时，配置 `CMAKE_PREFIX_PATH`。
 
 ```powershell
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
@@ -24,133 +127,51 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Visual Studio 等多配置生成器使用 `cmake --build build --config Release`，
-测试时增加 `-C Release`；可执行文件一般位于 `build/Release/`。
+Visual Studio 等多配置生成器构建时增加 `--config Release`，测试时增加 `-C Release`。
+开发构建默认使用共享依赖库，运行时需确保相关库可被加载。发布构建的链接与平台验证流程见 [发布政策](docs/LINUX_RELEASE.md)。
 
-默认 `cmake --build build` 同时构建正式程序、单元测试与集成测试，也可使用
-`cmake --build build --target build_all`。正式程序为 `build/filecrypt.exe`，
-单元测试程序位于 `build/tests/unit/`；多配置生成器会增加配置子目录。
-单独构建程序使用 `--target filecrypt`，单独构建单元测试使用 `--target unit_tests`。
-集成测试程序位于 `build/tests/integration/`，单独构建使用 `--target integration_tests`。
-运行单元测试使用 `ctest --test-dir build -L unit --output-on-failure`，
-运行正式程序冒烟测试使用 `ctest --test-dir build -L smoke --output-on-failure`，
-运行文件流程与 CLI 集成测试使用 `ctest --test-dir build -L integration --output-on-failure`。
+## 5. 项目结构
 
-编辑器也应执行 CMake 全量构建，不能只编译当前活动文件。
-
-`build/` 曾使用其他生成器时，在配置命令中增加 `--fresh` 重建 CMake 缓存。
-
-个人构建预设可放在 `CMakeUserPresets.json`，该文件已被 Git 忽略，不随仓库分发。
-
-GitHub Actions 的“手动构建与测试”工作流支持手动触发，也供标签发布流程复用，
-分别执行 Linux x86-64 和 Windows MSVC x64 的 Release 构建、单元测试、正式程序冒烟测试和文件流程集成测试。
-在仓库 Actions 页面选择该工作流并点击 Run workflow，各平台测试通过后可从该次运行的
-Artifacts 下载 `filecrypt-linux-x86_64` 或 `filecrypt-windows-x86_64`，分别只含 `filecrypt` 或 `filecrypt.exe`，保留 14 天。
-Windows 使用自定义 vcpkg triplet，仅编译 Release 依赖，静态链接 Botan、Zstandard 与 MSVC 运行库。
-推送 `v*` 标签会触发“标签发布”；两平台全部验证通过后，从本次运行的 Artifacts 创建 GitHub Release，
-上传 `filecrypt-linux-x86_64`、`filecrypt-windows-x86_64.exe` 和 `SHA256SUMS`。下载后可用 `sha256sum -c SHA256SUMS` 校验。
-Artifact 下载会丢失 Linux 执行权限，解压后先运行 `chmod +x filecrypt`，再运行 `./filecrypt` 命令。
-Linux 发布最低支持 glibc 2.34，目标为通用 x86-64，不强制要求 x86-64-v2；
-Botan、Zstandard、libstdc++ 和 libgcc 静态链接，glibc 动态链接，接收方无需另外安装这些库。
-构建信息和 ELF 审计输出留在 Actions 日志；只支持仍在维护的 glibc 发行版，
-EOL 系统不承诺兼容或测试，也不主动阻止运行，Alpine/musl 暂不支持。
-具体构建、审计与发行版测试矩阵见 [Linux 发布政策](docs/LINUX_RELEASE.md)；此前 Linux 工作流已通过，新增压缩依赖的流程仍待验证，MSVC 状态待确认。
-
-根 `CMakeLists.txt` 管理项目标准、CLI 和测试开关；`src/CMakeLists.txt` 定义应用、格式与 IO 库，`tests/CMakeLists.txt` 定义格式、版本分发及 CLI 测试。可使用 `-DBUILD_TESTING=OFF` 关闭测试目标。
-
-当前代码按职责分层：`src/cli/` 负责命令解析与展示，`src/app/` 负责版本分发，
-`src/app/v1/` 负责 v1 文件流程，`src/format/v1/` 保存 v1 协议与 Registry，
-`src/io/` 和 `src/platform/` 提供共享文件操作。CLI 不依赖 v1 格式类型。
-
-## 加密与解密文件
-
-```powershell
-.\build\filecrypt.exe encrypt .\input.txt .\input.fcry
-.\build\filecrypt.exe decrypt .\input.fcry .\restored.txt
+```text
+.
+├── include/filecrypt/   # 公共接口
+├── src/
+│   ├── cli/            # 命令解析、密码输入与结果展示
+│   ├── app/            # 版本分发与业务流程
+│   │   └── v1/         # v1 加解密、信息读取及文件类型识别
+│   ├── format/         # 版本识别、Header、Metadata、Registry 与 AAD
+│   ├── crypto/         # Botan 密码学后端
+│   ├── compression/    # Zstandard 压缩与解压
+│   ├── io/             # 共享 IO
+│   └── platform/       # 平台文件操作与终端密码输入
+├── tests/              # 单元、CLI 与文件流程测试
+├── docs/               # 协议、架构、发布政策与 TODO
+├── cmake/              # 依赖查找与构建配置
+└── .github/            # 构建、测试与发布工作流
 ```
 
-命令的完整名称不带横线，简写必须带单横线；`encrypt/-e`、`decrypt/-d`、`info/-i`、
-`help/-h` 分别等价，`sample` 保留完整命令。加解密命令后的前两个参数固定为输入、输出路径，
-其后才解析选项；路径可以与选项同名或以横线开头，无需额外分隔符。
-长短写法可以混用，重复或冲突选项报错，不接受 `e`、`--encrypt`、`--algorithm` 等其他写法。
+## 6. 限制
 
-```powershell
-.\build\filecrypt.exe -e .\input.txt .\input.fcry -a xchacha
-.\build\filecrypt.exe -e .\input.txt .\compressed.fcry -z
-.\build\filecrypt.exe -d .\input.fcry .\restored.txt
-.\build\filecrypt.exe -i .\input.fcry
-.\build\filecrypt.exe -h
-```
+* 当前只支持普通单文件加解密，目录打包与恢复尚未实现。
+* 不保存完整原始文件名、时间戳或文件权限；扩展名仅保存已登记类型，未登记后缀记 `Unknown`。
+* File Type 位于公开 Header，未输入密码也可读取；`info` 不验证文件真实性。
+* magic 检测只提供后缀提示，不校验完整内容；未命中的无后缀文件记 `Unknown`。
+* 压缩解密先认证临时载荷，再解压，需要额外临时磁盘空间。
+* v1 使用单条 AEAD 消息，载荷受所选算法的消息长度上限约束。
+* 不接受命令行明文密码；管道密码输入需使用 UTF-8。
 
-加密要求输入并确认密码，解密只输入一次；终端输入隐藏回显。也支持从标准输入读取密码行，
-适合通过受控管道自动化，不接受命令行明文密码。密码保持原始字节语义，CLI 拒绝空密码。
-Windows 交互式密码转换为 UTF-8，管道输入需要提供 UTF-8；密码行的换行符不属于密码。
-当前密码输入运行限制为 1 MiB，不是协议限制。
+## 7. 文档
 
-默认算法为 AES-256-GCM，可指定 `algorithm xchacha` 或 `-a xchacha`。
-算法值接受 `aes`、`xchacha`，也接受完整名称 `aes-256-gcm`、`xchacha20-poly1305`。
-两种算法均使用 Argon2id、每文件独立随机 Salt 与 Nonce，并将真实 Tag 写回 Metadata。
-当前命令只处理普通单文件，支持可选压缩，不支持目录；已有输出绝不覆盖。
-默认不压缩，也可显式写 `no-compress`；使用 `compress` 或 `-z` 启用 Zstandard，当前压缩等级为 3。
-解密从文件中自动读取算法和布局，不接受算法或压缩覆盖选项；真实目录功能尚未接通。
+* [文件格式](docs/FILE_FORMAT.md)
+* [扩展名及算法编号](docs/REGISTRY_V1.md)
+* [协议边界](docs/PROTOCOL_BOUNDARIES_V1.md)
+* [密码学设计](docs/CRYPTOGRAPHY.md)
+* [压缩实现](docs/COMPRESSION.md)
+* [目录格式](docs/DIRECTORY_FORMAT.md)
+* [项目架构](docs/ARCHITECTURE.md)
+* [发布政策](docs/LINUX_RELEASE.md)
+* [开发进度与待办](docs/TODO.md)
 
-加密和解密均使用目标同目录的受限权限临时文件，失败自动清理；解密在整条消息认证成功后才发布输出。
-压缩解密先在受控临时文件中完成认证，再解压到另一个输出事务，解压成功后发布；需要额外临时磁盘空间。
-POSIX 使用 0600 权限，Windows 临时文件和最终文件只允许所有者及 SYSTEM 访问。
-普通文件加密不保存原始文件名、时间戳或权限，解密输出路径由用户指定。
+## 8. 开源协议
 
-当前可调整的运行默认值为内存 65536 KiB、3 次迭代、1 lane，最终生产策略仍待跨平台评估。
-可使用 `memory-kib N iterations N parallelism N` 修改加密成本；实际值全部写入 Metadata。
-加密和解密的默认 KDF 资源上限为 262144 KiB、10 次迭代、16 lanes，
-可使用 `max-memory-kib N max-iterations N max-parallelism N` 显式调整。
-它们是运行策略，不是 v1 协议常数；超限会在 KDF 计算和输出创建前拒绝。
-
-压缩解密默认限制累计解压输出为 16 GiB、窗口为 64 MiB，可在解密命令的路径后使用
-`max-output-bytes N` 与 `max-window-kib N` 调整；窗口 KiB 必须为 1 到 1048576 之间的二次幂。
-输出字节上限接受正的 64 位整数，覆盖所有拼接帧；窗口限制不是整个进程的内存上限。
-这些只约束压缩载荷解压，不改变无压缩文件的 AEAD 长度限制；失败不会发布最终文件。
-压缩参数不写入 v1 Metadata，解密根据标准帧信息处理，详情见 [压缩实现](docs/COMPRESSION.md)。
-
-## 生成 Header 与 Metadata 示例
-
-```powershell
-.\build\filecrypt.exe sample .\example.fcry directory
-```
-
-默认使用 AES-256-GCM、单文件、无压缩。可通过以下选项改变布局：
-
-* `algorithm aes|xchacha` 或 `-a aes|xchacha`：选择算法，也接受完整算法名称
-* `directory`：目录布局，Index Length 占位值为 0
-* `compress` 或 `-z`：增加 Zstandard Metadata，不实际执行压缩
-* `no-compress`：显式选择无压缩，默认可省略
-
-示例只有合法的 Header 与 Metadata 字节，不包含真实加密载荷。Salt、Nonce、Tag 使用固定占位值，KDF 成本仅用于格式演示；不能作为真实加密文件或生产默认配置使用。已有路径不会被覆盖。
-
-## 读取公开格式信息
-
-```powershell
-.\build\filecrypt.exe info .\example.fcry
-```
-
-程序显示文件名、版本、算法、压缩状态、目录状态、KDF 参数、字段长度与载荷是否存在。它只检查 Header 和 Metadata 的格式，始终显示“认证状态：未验证”，不需要密码，也不验证载荷真实性。
-
-## 内存密码接口
-
-`include/filecrypt/crypto/crypto.hpp` 提供独立的 `FileCrypt::Crypto` 库接口：
-
-* `derive_key`：显式传入 Argon2id 内存 KiB、迭代次数、并行度、资源上限与密钥长度；当前支持 32 字节密钥。
-* `random_bytes`：生成安全随机 Salt 与 Nonce。
-* `CipherContext`：AES-256-GCM 或 XChaCha20-Poly1305 增量处理，`finish` 返回或验证独立 Tag。
-* `encrypt`、`decrypt`：单消息内存接口，`decrypt` 只在认证成功后返回完整明文。
-
-密码、密钥和明文建议使用 `SecureBytes`；调用者负责尽快释放敏感数据。
-增量 `update` 的解密输出尚未认证，只能放入受控临时输出；不能当作最终明文发布。
-`finish` 或处理错误后上下文关闭，不能重试或复用。认证失败统一抛出 `AuthenticationError`。
-Crypto 接口的 KDF 参数及资源策略由调用者显式指定，测试成本仅用于快速验证。Crypto 不理解文件版本或协议 ID，
-由版本应用流程负责转换参数；测试已验证其与 v1 AAD、Metadata 的衔接。
-CLI 已通过 v1 应用流程接入 Crypto，`info` 的公开信息读取仍不执行认证。
-
-Metadata 使用 [v1 协议边界](docs/PROTOCOL_BOUNDARIES_V1.md) 中的顺序：字段、零填充、末尾 Tag；具体编号与参数见 [v1 Registry](docs/REGISTRY_V1.md)，后续工作见 [TODO](docs/TODO.md)。
-
-当前已验证新增压缩功能的 Windows/MinGW 本地构建，此前 Linux Actions 发布流程已通过；新增压缩依赖及 MSVC 待 Actions 验证。
-中文输出为 UTF-8，终端需使用对应编码；Windows Unicode 命令行路径支持仍待完善。
+[GNU General Public License v3.0](LICENSE)

@@ -11,7 +11,7 @@ void sample(const std::filesystem::path& path, const SampleOptions& options);
 void encrypt(const std::filesystem::path& input, const std::filesystem::path& output,
     std::span<const std::uint8_t> password, const EncryptOptions& options);
 /// 执行 v1 单文件解密，认证成功后按需受限解压并提交输出。
-void decrypt(std::istream& input, const std::filesystem::path& output,
+std::filesystem::path decrypt(std::istream& input, const std::filesystem::path& output,
     std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
-    const compression::DecompressionLimits& decompression_limits);
+    const compression::DecompressionLimits& decompression_limits, bool restore_extension);
 }

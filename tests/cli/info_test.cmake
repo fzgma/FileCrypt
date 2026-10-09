@@ -1,3 +1,5 @@
+# 同时覆盖 Unicode 父目录、空格和补充平面字符；Windows 不应依赖 ANSI 代码页。
+set(TEST_DIR "${TEST_DIR}/中文 路径 🔐")
 file(MAKE_DIRECTORY "${TEST_DIR}")
 
 # 执行命令并要求其成功，返回输出供断言使用。
@@ -121,3 +123,13 @@ file(APPEND "${path}" "payload")
 run_success(info info "${path}")
 expect_text("${info}" "载荷：存在")
 expect_text("${info}" "认证状态：未验证")
+
+# sample/info 的文件名和未知选项诊断都必须原样输出 UTF-8。
+set(unicode_name "格式 示例 🔑.fcry")
+file(REMOVE "${TEST_DIR}/${unicode_name}")
+run_success(generated sample "${unicode_name}" -a xchacha -z)
+expect_text("${generated}" "${unicode_name}")
+run_success(info info "${TEST_DIR}/${unicode_name}")
+expect_text("${info}" "加密文件名：${unicode_name}")
+run_failure(sample "${TEST_DIR}/bad-option.fcry" "未知选项 🔑")
+expect_text("${last_error}" "未知选项：未知选项 🔑")
