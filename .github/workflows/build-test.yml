@@ -70,7 +70,7 @@ jobs:
       - name: 运行正式程序冒烟测试
         run: ctest --test-dir build -C Release -L smoke --output-on-failure
       - name: 运行文件流程集成测试
-        run: ctest --test-dir build -C Release -R "^app_file_crypt$" --output-on-failure
+        run: ctest --test-dir build -C Release -R "^app_(file|directory)_crypt$" --output-on-failure
       - name: 验证 Windows 单文件分发
         run: |
           New-Item -ItemType Directory -Path build/standalone -Force | Out-Null

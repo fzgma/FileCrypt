@@ -286,6 +286,22 @@ void transaction_tests(const std::filesystem::path& directory) {
     }
     check(read_file(target) == crypto::Bytes({1, 9, 3}), "Seek or commit failed");
     check_no_temporary(directory);
+    std::filesystem::remove(target);
+    std::filesystem::path old_temporary;
+    {
+        io::OutputTransaction output(target);
+        output.write(std::as_bytes(std::span(bytes)));
+        for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+            if (entry.path().filename().string().starts_with(".filecrypt-")) old_temporary = entry.path();
+        }
+        check(!old_temporary.empty(), "Cannot find transaction fixture");
+        output.commit();
+        write_file(old_temporary, crypto::Bytes{9});
+    }
+    check(std::filesystem::exists(old_temporary) && read_file(old_temporary) == crypto::Bytes{9},
+        "Committed transaction deleted a replacement at its old temporary name");
+    std::filesystem::remove(old_temporary);
+    check_no_temporary(directory);
 }
 
 /// 验证实际加密 Header、原始后缀优先、复合后缀恢复及受认证的类型信息。

@@ -6,6 +6,7 @@
 #include <utility>
 #include <filecrypt/crypto/crypto.hpp>
 #include <filecrypt/compression/compression.hpp>
+#include <filecrypt/directory/limits.hpp>
 
 namespace filecrypt::app {
 struct FileInfo {
@@ -35,13 +36,14 @@ struct EncryptOptions {
     // 可调整的运行参数，不是协议常数；正式默认值仍待跨平台测量。
     crypto::Argon2idParameters kdf{65536, 3, 1};
     crypto::KdfLimits limits{262144, 10, 16};
+    directory::Limits directory_limits{};
 };
 
 /// 识别文件版本并调用相应流程读取公开信息。
 [[nodiscard]] FileInfo inspect_file(const std::filesystem::path& path);
 /// 根据明确版本和选项生成格式样本，不执行真实加密。
 void generate_sample(const std::filesystem::path& path, const SampleOptions& options);
-/// 将普通单文件加密到新路径，成功后提交最终输出。
+/// 将普通文件或目录加密到新路径，成功后提交最终输出。
 void encrypt_file(const std::filesystem::path& input, const std::filesystem::path& output,
     std::span<const std::uint8_t> password, const EncryptOptions& options = {});
 /// 按文件版本认证并解密，返回实际输出路径；可选恢复无后缀路径的登记扩展名。
@@ -49,5 +51,6 @@ std::filesystem::path decrypt_file(const std::filesystem::path& input, const std
     std::span<const std::uint8_t> password,
     const crypto::KdfLimits& limits = {262144, 10, 16},
     const compression::DecompressionLimits& decompression_limits = {},
-    bool restore_extension = false);
+    bool restore_extension = false,
+    const directory::Limits& directory_limits = {});
 }

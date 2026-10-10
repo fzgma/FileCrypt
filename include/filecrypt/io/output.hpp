@@ -22,6 +22,8 @@ public:
     [[nodiscard]] std::size_t read(std::span<std::byte> bytes);
     /// 将临时文件读写指针移动到指定绝对偏移。
     void seek(std::uint64_t offset);
+    /// 查询临时载荷的实际长度，不改变当前读写位置。
+    [[nodiscard]] std::uint64_t size() const;
     /// 刷新并关闭输出，将其提交到不存在的目标路径。
     void commit();
 private:

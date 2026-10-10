@@ -2,7 +2,7 @@
 
 > 使用密码加密和恢复本地文件的跨平台 C++23 命令行工具。
 
-FileCrypt 支持 **单文件加解密、可选 Zstandard 压缩、公开信息查看和扩展名恢复**，使用 Argon2id 派生密钥，并通过 AEAD 验证文件完整性。
+FileCrypt 支持 **文件与目录加解密、可选 Zstandard 压缩、公开信息查看和扩展名恢复**，使用 Argon2id 派生密钥，并通过 AEAD 验证文件完整性。
 
 面向 Windows 和 Linux，目前提供 CLI。下载入口：[GitHub Releases](https://github.com/fzgma/FileCrypt/releases)。构建与发布验证进度见 [TODO](docs/TODO.md)。
 
@@ -10,6 +10,7 @@ FileCrypt 支持 **单文件加解密、可选 Zstandard 压缩、公开信息�
 
 * **文件加密**：将普通文件加密为 `.fcry` 容器
 * **文件解密**：验证认证标签，成功后发布恢复文件
+* **目录加解密**：保存目录树、文件内容和空目录，完整恢复后发布
 * **算法选择**：AES-256-GCM / XChaCha20-Poly1305
 * **密码派生**：Argon2id，每个文件使用独立随机 Salt 与 Nonce
 * **可选压缩**：加密前执行 Zstandard 压缩，解密自动识别
@@ -85,6 +86,18 @@ Linux 发布目标为 x86-64、glibc 2.34+；正式支持仍在维护的发行�
 
 解密自动读取算法与压缩状态，无需重复指定这些选项。
 
+### 目录加密与恢复
+
+输入是目录时自动使用目录布局，支持两种算法和可选压缩：
+
+```powershell
+.\filecrypt.exe -e .\documents backup -z
+.\filecrypt.exe -d backup .\restored
+```
+
+`restored` 就是恢复后的根目录，不会再套一层 `documents`。目录目标不会补文件扩展名，已有文件或目录均拒绝覆盖。
+加密输出必须放在源目录之外。首版拒绝符号链接、Windows junction/reparse point 和其他特殊对象；源目录在加密期间应保持不变。
+
 ### 后缀处理
 
 * 加密输出没有后缀时补 `.fcry`；解密输入同理。
@@ -113,7 +126,19 @@ Linux 发布目标为 x86-64、glibc 2.34+；正式支持仍在维护的发行�
 | `max-output-bytes` | 16 GiB | 累计解压输出上限 |
 | `max-window-kib` | 65536 | 解压窗口上限 |
 
-这些是可调整的运行策略；实际 KDF 参数写入文件，解密时按记录值派生密钥。解压上限只约束压缩载荷，更多说明见 [压缩实现](docs/COMPRESSION.md)。
+这些是可调整的运行策略；实际 KDF 参数写入文件，解密时按记录值派生密钥。普通文件的解压上限约束压缩载荷，目录还受以下归档策略限制；更多说明见 [压缩实现](docs/COMPRESSION.md)。
+
+目录还提供以下可调上限，加密与解密均可指定：
+
+| 参数 | 当前默认值 | 用途 |
+| --- | --- | --- |
+| `max-index-bytes` | 64 MiB | 目录 Index 大小 |
+| `max-entries` | 100000 | 条目数，包含根目录 |
+| `max-name-bytes` | 4096 | 单组件 UTF-8 名称字节数 |
+| `max-depth` | 256 | 根目录以下的路径深度 |
+| `max-archive-bytes` | 16 GiB | Index 与全部 File Data 总长度 |
+
+解密时显式指定 `max-output-bytes` 也会限制目录归档输出；压缩目录同时受解压窗口和解压输出上限约束。这些均为运行策略，不是冻结的协议限制。
 
 ## 4. 从源码构建
 
@@ -152,11 +177,12 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 
 ## 6. 限制
 
-* 当前只支持普通单文件加解密，目录打包与恢复尚未实现。
-* 不保存完整原始文件名、时间戳或文件权限；扩展名仅保存已登记类型，未登记后缀记 `Unknown`。
+* 目录仅支持普通文件和目录；不保存链接关系、时间戳或原始权限，不支持恢复到已有目录并合并。
+* 单文件不保存完整原始文件名；扩展名仅保存已登记类型，未登记后缀记 `Unknown`。目录中的名称和树结构保存在加密 Index 中。
 * File Type 位于公开 Header，未输入密码也可读取；`info` 不验证文件真实性。
 * magic 检测只提供后缀提示，不校验完整内容；未命中的无后缀文件记 `Unknown`。
-* 压缩解密先认证临时载荷，再解压，需要额外临时磁盘空间。
+* 压缩解密和目录恢复需要额外临时磁盘空间；错误密码、结构异常、资源超限、平台非法名称或目标名称冲突均不发布最终目录。
+* Windows 名称限制、文件系统大小写及路径长度限制可能使跨平台恢复失败；不会自动改名。
 * v1 使用单条 AEAD 消息，载荷受所选算法的消息长度上限约束。
 * 不接受命令行明文密码；管道密码输入需使用 UTF-8。
 
@@ -168,6 +194,7 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 * [密码学设计](docs/CRYPTOGRAPHY.md)
 * [压缩实现](docs/COMPRESSION.md)
 * [目录格式](docs/DIRECTORY_FORMAT.md)
+* [目录实现与运行策略](docs/DIRECTORY_IMPLEMENTATION.md)
 * [项目架构](docs/ARCHITECTURE.md)
 * [发布政策](docs/LINUX_RELEASE.md)
 * [开发进度与待办](docs/TODO.md)

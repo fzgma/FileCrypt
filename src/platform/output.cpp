@@ -18,6 +18,7 @@
 #else
 #include <cerrno>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -184,6 +185,19 @@ void OutputTransaction::seek(std::uint64_t offset) {
 #endif
 }
 
+std::uint64_t OutputTransaction::size() const {
+    if (impl_->committed) throw std::logic_error("Output already committed");
+#ifdef _WIN32
+    LARGE_INTEGER size{};
+    if (!GetFileSizeEx(impl_->handle, &size) || size.QuadPart < 0) throw std::runtime_error("Cannot measure temporary payload");
+    return static_cast<std::uint64_t>(size.QuadPart);
+#else
+    struct stat info{};
+    if (fstat(impl_->descriptor, &info) != 0 || info.st_size < 0) throw std::runtime_error("Cannot measure temporary payload");
+    return static_cast<std::uint64_t>(info.st_size);
+#endif
+}
+
 /// 刷新并发布已完成输出，提交竞态也不得覆盖已有目标。
 void OutputTransaction::commit() {
     if (impl_->committed) {
@@ -199,6 +213,7 @@ void OutputTransaction::commit() {
             impl_->destination.c_str(), MOVEFILE_WRITE_THROUGH)) {
         throw std::runtime_error("Output commit failed; destination may already exist");
     }
+    impl_->temporary.clear();
 #else
     if (fsync(impl_->descriptor) != 0) {
         throw std::runtime_error("Output flush failed");
@@ -212,6 +227,9 @@ void OutputTransaction::commit() {
     if (unlink(impl_->temporary.c_str()) != 0) {
         std::error_code error;
         std::filesystem::remove(impl_->temporary, error);
+        if (!error) impl_->temporary.clear();
+    } else {
+        impl_->temporary.clear();
     }
 #endif
     impl_->committed = true;

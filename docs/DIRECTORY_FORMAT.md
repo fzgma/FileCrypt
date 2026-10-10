@@ -5,6 +5,8 @@
 
 本文定义 FileCrypt v1 的目录加密格式。
 
+当前运行行为、资源策略与恢复事务见 [目录实现](DIRECTORY_IMPLEMENTATION.md)。
+
 Directory Archive 复用 FileCrypt v1 的外层 Header、Metadata、AAD 与加密机制，不修改 Single File 格式。
 
 ---

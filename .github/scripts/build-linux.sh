@@ -50,7 +50,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
 cmake --build build --target build_all --parallel 2
 ctest --test-dir build -L unit --output-on-failure
 ctest --test-dir build -L smoke --output-on-failure
-ctest --test-dir build -R '^app_file_crypt$' --output-on-failure
+ctest --test-dir build -R '^app_(file|directory)_crypt$' --output-on-failure
 
 # 所有测试程序也必须能够在没有 Botan 和 C++ 共享运行库的目标容器中执行。
 python .github/scripts/check-linux-elf.py build/filecrypt build/tests/unit/* build/tests/integration/*

@@ -1,6 +1,7 @@
 #include <filecrypt/app/operations.hpp>
 #include <filecrypt/format/detect.hpp>
 #include <filecrypt/io/file.hpp>
+#include <filecrypt/io/source.hpp>
 #include "v1/operations.hpp"
 #include <array>
 #include <fstream>
@@ -37,11 +38,12 @@ void generate_sample(const std::filesystem::path& path, const SampleOptions& opt
 /// 校验输入类型并分发真实文件加密到显式指定的协议版本。
 void encrypt_file(const std::filesystem::path& input, const std::filesystem::path& output,
     std::span<const std::uint8_t> password, const EncryptOptions& options) {
-    if (!std::filesystem::is_regular_file(input)) {
-        throw std::invalid_argument("Encryption input must be a regular file");
-    }
+    io::validate_source_path(input);
+    auto source = std::filesystem::absolute(input).lexically_normal();
+    if (source.filename().empty() && source != source.root_path()) source = source.parent_path();
+    (void)io::inspect_source(source);
     switch (options.version) {
-    case 1: v1::encrypt(input, output, password, options); return;
+    case 1: v1::encrypt(source, output, password, options); return;
     default: throw std::invalid_argument("Unsupported FileCrypt version");
     }
 }
@@ -49,7 +51,8 @@ void encrypt_file(const std::filesystem::path& input, const std::filesystem::pat
 /// 在最小识别前缀确认版本后分发真实文件解密。
 std::filesystem::path decrypt_file(const std::filesystem::path& path, const std::filesystem::path& output,
     std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
-    const compression::DecompressionLimits& decompression_limits, bool restore_extension) {
+    const compression::DecompressionLimits& decompression_limits, bool restore_extension,
+    const directory::Limits& directory_limits) {
     compression::validate_limits(decompression_limits);
     if (!std::filesystem::is_regular_file(path)) {
         throw std::invalid_argument("Decryption input must be a regular file");
@@ -66,7 +69,7 @@ std::filesystem::path decrypt_file(const std::filesystem::path& path, const std:
         throw std::runtime_error("Cannot seek input file");
     }
     switch (version) {
-    case 1: return v1::decrypt(input, output, password, limits, decompression_limits, restore_extension);
+    case 1: return v1::decrypt(input, output, password, limits, decompression_limits, restore_extension, directory_limits);
     default: throw std::invalid_argument("Unsupported FileCrypt version");
     }
 }

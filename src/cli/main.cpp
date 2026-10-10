@@ -1,6 +1,7 @@
 #include <filecrypt/app/operations.hpp>
 #include <filecrypt/io/password.hpp>
 #include <charconv>
+#include <algorithm>
 #include <bit>
 #include <iostream>
 #include <set>
@@ -92,7 +93,8 @@ void print_usage() {
         "资源上限：max-memory-kib N max-iterations N max-parallelism N\n"
         "解压上限：max-output-bytes N（默认 16 GiB），max-window-kib N（默认 65536）\n"
         "密码从隐藏终端或标准输入读取；加密需要输入两次，解密一次。\n"
-        "encrypt/decrypt 支持可选 Zstandard 压缩的单文件；真实目录尚不支持。\n"
+        "encrypt/decrypt 支持普通文件和目录，可选 Zstandard 压缩；目录恢复目标就是根目录。\n"
+        "目录上限：max-index-bytes N max-entries N max-name-bytes N max-depth N max-archive-bytes N\n"
         "解密自动读取算法和布局，不接受算法或压缩选项；拒绝覆盖已有输出。\n"
         "sample 仅生成 Header 与 Metadata 格式示例，不执行加密。\n";
 }
@@ -243,12 +245,29 @@ void crypt_file(bool encrypting, int argc, char** argv) {
         } else if (!encrypting && name == "max-window-kib") {
             claim_option(seen, name);
             decompression_limits.max_window_log = parse_window_log(next_value(i, argc, argv));
+        } else if (name == "max-index-bytes") {
+            claim_option(seen, name);
+            options.directory_limits.max_index_bytes = parse_output_limit(next_value(i, argc, argv));
+        } else if (name == "max-entries") {
+            claim_option(seen, name);
+            options.directory_limits.max_entries = parse_positive(next_value(i, argc, argv));
+        } else if (name == "max-name-bytes") {
+            claim_option(seen, name);
+            options.directory_limits.max_name_bytes = parse_positive(next_value(i, argc, argv));
+        } else if (name == "max-depth") {
+            claim_option(seen, name);
+            options.directory_limits.max_depth = parse_positive(next_value(i, argc, argv));
+        } else if (name == "max-archive-bytes") {
+            claim_option(seen, name);
+            options.directory_limits.max_output_bytes = parse_output_limit(next_value(i, argc, argv));
         } else {
             throw std::invalid_argument("未知或不适用于当前命令的选项：" + std::string(name));
         }
     }
     const auto input = encrypting ? argument_path(argv[2]) : ciphertext_path(argument_path(argv[2]));
     const auto output = encrypting ? ciphertext_path(argument_path(argv[3])) : argument_path(argv[3]);
+    if (!encrypting && seen.contains("max-output-bytes")) options.directory_limits.max_output_bytes =
+        std::min(options.directory_limits.max_output_bytes, decompression_limits.max_output_bytes);
     auto password = filecrypt::io::read_password("密码：");
     if (password.empty()) {
         throw std::invalid_argument("密码不能为空");
@@ -266,7 +285,7 @@ void crypt_file(bool encrypting, int argc, char** argv) {
             << "警告：忘记密码将无法恢复文件，FileCrypt 无法重置或绕过密码。\n";
     } else {
         const auto restored = filecrypt::app::decrypt_file(input, output, password,
-            options.limits, decompression_limits, true);
+            options.limits, decompression_limits, true, options.directory_limits);
         password.clear();
         std::cout << "解密完成（认证通过）：" << display_filename(restored) << '\n';
     }

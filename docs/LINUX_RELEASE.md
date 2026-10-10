@@ -29,7 +29,7 @@ Botan 的可选指令集优化保留运行时 CPU 探测，不能全局强制启
 
 ## 验证与分发
 
-Linux 和 MSVC 构建后分别执行 6 项单元测试、2 项正式程序冒烟测试和 1 项文件流程集成测试。
+Linux 和 MSVC 构建后分别执行 7 项单元测试、3 项正式程序冒烟测试和 2 项文件/目录流程集成测试。
 Windows 另执行 1 项隐藏控制台测试，验证非 UTF-8 代码页下的中文标准输出、错误输出及退出后的代码页恢复。
 冒烟测试直接调用正式可执行文件，验证格式生成与读取、两种算法的压缩及无压缩加解密、密码错误和已有输出保护；
 CLI 测试同时覆盖中文、空格及 emoji 路径和重定向 UTF-8 输出；Windows 控制台测试也使用 `smoke` 标签。
@@ -41,7 +41,7 @@ Linux 随后审计正式程序和测试程序的 ELF：
 - 动态依赖仅允许 glibc 系统库，不允许 Botan、Zstandard、libstdc++、libgcc 或其他第三方共享库。
 - ELF ISA 必需属性不能声明 x86-64-v2/v3/v4；属性检查不能替代实际运行验证。
 
-同一批已编译程序会在以下正式矩阵中执行全部 9 项对应测试，不重新编译：
+同一批已编译程序会在以下正式矩阵中执行全部 12 项对应测试，不重新编译：
 
 | 发行版 | 测试版本 |
 | --- | --- |
@@ -65,7 +65,7 @@ Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即�
 将 Linux 和 Windows 可执行文件分别命名为 `filecrypt-linux-x86_64`、`filecrypt-windows-x86_64.exe`，
 生成包含两者 SHA-256 的 `SHA256SUMS` 并创建 GitHub Release；任一验证失败均不发布。
 
-新增压缩功能的 Windows/MinGW 本地构建已通过；此前 Linux 发布流程已通过，新增静态 Zstandard 构建及 MSVC Actions 待确认。
+v0.2.0 的 Linux 与 MSVC Actions 验证已由用户确认全部成功。本阶段新增目录功能的 Linux/发行版矩阵/CPU 模拟及 MSVC 验证待新一轮 Actions 确认；Windows/MinGW 本地检查同步记录在 TODO。
 
 ## 参考资料
 

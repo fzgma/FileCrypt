@@ -22,14 +22,18 @@ add_executable(compression_test compression/compression_test.cpp)
 target_link_libraries(compression_test PRIVATE FileCrypt::Compression Zstd::Zstd)
 add_test(NAME compression_core COMMAND compression_test)
 
+add_executable(directory_test format/v1/directory_test.cpp)
+target_link_libraries(directory_test PRIVATE FileCrypt::Format)
+add_test(NAME format_directory COMMAND directory_test)
+
 # 单元测试可单独构建，测试程序统一放在 build/tests/unit。
-set(unit_test_targets header_test metadata_test aad_test detect_test crypto_test compression_test)
+set(unit_test_targets header_test metadata_test aad_test detect_test crypto_test compression_test directory_test)
 foreach(test_target IN LISTS unit_test_targets)
     set_target_properties(${test_target} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unit")
 endforeach()
 add_custom_target(unit_tests DEPENDS ${unit_test_targets})
-set_tests_properties(format_header format_metadata format_aad format_detect crypto_core compression_core
+set_tests_properties(format_header format_metadata format_aad format_detect crypto_core compression_core format_directory
     PROPERTIES LABELS "unit")
 
 add_test(NAME cli_info COMMAND "${CMAKE_COMMAND}"
@@ -46,11 +50,27 @@ add_custom_target(integration_tests DEPENDS file_crypt_test filecrypt)
 add_test(NAME app_file_crypt COMMAND file_crypt_test "${CMAKE_CURRENT_BINARY_DIR}/file-crypt-test")
 set_tests_properties(app_file_crypt PROPERTIES LABELS "integration")
 
+add_executable(directory_crypt_test app/directory_crypt_test.cpp)
+target_link_libraries(directory_crypt_test PRIVATE FileCrypt::App FileCrypt::Format FileCrypt::IO)
+if(MINGW)
+    target_link_options(directory_crypt_test PRIVATE -municode)
+endif()
+set_target_properties(directory_crypt_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/integration")
+add_dependencies(integration_tests directory_crypt_test)
+add_test(NAME app_directory_crypt COMMAND directory_crypt_test "${CMAKE_CURRENT_BINARY_DIR}/directory-crypt-test")
+set_tests_properties(app_directory_crypt PROPERTIES LABELS "integration")
+
 add_test(NAME cli_file_crypt COMMAND "${CMAKE_COMMAND}"
     "-DFILECRYPT=$<TARGET_FILE:filecrypt>"
     "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/cli-crypt-test"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cli/crypt_test.cmake")
 set_tests_properties(cli_file_crypt PROPERTIES LABELS "integration;smoke")
+
+add_test(NAME cli_directory_crypt COMMAND "${CMAKE_COMMAND}"
+    "-DFILECRYPT=$<TARGET_FILE:filecrypt>" "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/cli-directory-test"
+    "-DCLEANUP_TOOL=$<TARGET_FILE:directory_crypt_test>"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cli/directory_test.cmake")
+set_tests_properties(cli_directory_crypt PROPERTIES LABELS "integration;smoke")
 
 if(WIN32)
     add_executable(console_test cli/console_test.cpp)
