@@ -1,0 +1,361 @@
+{
+  "archive_sha256": "431d7c105c64e26e51e721a51c759c49befade80d228ff332e409db1417399ae",
+  "file_count": 67,
+  "directory_count": 16,
+  "total_bytes": 5920768,
+  "directories": [
+    "00-empty",
+    "01-small",
+    "02-text",
+    "03-structured",
+    "04-binary",
+    "05-nested",
+    "05-nested/层级一",
+    "05-nested/层级一/层级二",
+    "06-unicode 文件夹",
+    "06-unicode 文件夹/日本語",
+    "07-many-files",
+    "07-many-files/group-01",
+    "07-many-files/group-02",
+    "07-many-files/group-03",
+    "07-many-files/group-04",
+    "08-empty-directory"
+  ],
+  "files": [
+    {
+      "path": "00-empty/empty.bin",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "00-empty/empty.txt",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "01-small/all-byte-values-repeated.bin",
+      "size_bytes": 8192,
+      "sha256": "dc404a613fedaeb54034514bc6505f56b933caa5250299ba7d094377a51caa46"
+    },
+    {
+      "path": "01-small/one-byte-00.bin",
+      "size_bytes": 1,
+      "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+    },
+    {
+      "path": "01-small/one-byte-ff.bin",
+      "size_bytes": 1,
+      "sha256": "a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89"
+    },
+    {
+      "path": "01-small/spaces and (parentheses) [brackets] !.txt",
+      "size_bytes": 76,
+      "sha256": "21b3c3f65dbef7715f19be40859e10eb0c04b5700036c183ad627f69b4fb0e20"
+    },
+    {
+      "path": "01-small/tiny-17-bytes.bin",
+      "size_bytes": 17,
+      "sha256": "e7a1414fca04dd8effcc42fe0fed80ffbdd6b6a417c2bc6f485f2eb6ce007cba"
+    },
+    {
+      "path": "02-text/crlf-only.txt",
+      "size_bytes": 27,
+      "sha256": "9aae15bad9d8f18338e4af6de524b434846b8def76efe057663287e95c072ce1"
+    },
+    {
+      "path": "02-text/lf-only.txt",
+      "size_bytes": 39,
+      "sha256": "c841bc80277a51f9e0c22bf7d55cfd5c17ecd640f32eb94524802c5c59706fa4"
+    },
+    {
+      "path": "02-text/many-lines-10000.txt",
+      "size_bytes": 315034,
+      "sha256": "c6bcdd9eff10b903133ce8ee8fa11862c071e52ac92fc74c4b8a9e97700144b9"
+    },
+    {
+      "path": "02-text/mixed-languages.txt",
+      "size_bytes": 416,
+      "sha256": "a8f22473e9541c01215dc2dfca6a9025f1cad56eb72b3564d0eba0a8c0098216"
+    },
+    {
+      "path": "02-text/utf8-bom.txt",
+      "size_bytes": 56,
+      "sha256": "fd77dbc25c3ce1a99c25f7a961bd6a501d0506d0199ad2ae4ccffad8b639ebdf"
+    },
+    {
+      "path": "03-structured/records.csv",
+      "size_bytes": 23172,
+      "sha256": "cc86a6196319f6328b84db3c0e87b636ef6551f22537589203b1b537a2b0ba0d"
+    },
+    {
+      "path": "03-structured/settings.json",
+      "size_bytes": 2569,
+      "sha256": "0403d5f46a48c45b5210f58618df66d1b548a5cb3c8308223260b6e4bf98f088"
+    },
+    {
+      "path": "04-binary/alternating-pattern.bin",
+      "size_bytes": 65536,
+      "sha256": "36be4383a9a2e6713d79d9a83d19df53b1a6817df2305a7318f0d17fbdbda97e"
+    },
+    {
+      "path": "04-binary/random-1KiB.bin",
+      "size_bytes": 1024,
+      "sha256": "276569aaa7b163098c6c7b412ff2a8fe41524b44cc8b8179e6b2b6c93ae509c9"
+    },
+    {
+      "path": "04-binary/random-1MiB.bin",
+      "size_bytes": 1048576,
+      "sha256": "effe2362b26226b809380989f878e4e98ba3d428e8059e6e1cd68d907808add2"
+    },
+    {
+      "path": "04-binary/random-4MiB.bin",
+      "size_bytes": 4194304,
+      "sha256": "0e6ae5a6422f77601625e5b2f211ed4465d874d69ae9a402ed7c1a4bae557c34"
+    },
+    {
+      "path": "04-binary/random-64KiB.bin",
+      "size_bytes": 65536,
+      "sha256": "643ff97418b15539359073ff518852bcc728ba6d5af2d2d5fe64393d337dad4b"
+    },
+    {
+      "path": "04-binary/zero-filled-128KiB.bin",
+      "size_bytes": 131072,
+      "sha256": "fa43239bcee7b97ca62f007cc68487560a39e19f74f3dde7486db3f98df8e471"
+    },
+    {
+      "path": "05-nested/层级一/层级二/payload-空格 名称.bin",
+      "size_bytes": 769,
+      "sha256": "c9feb0a542657ecf9170c60b0527943156107250c2e6391ac04c3cb5206da0b1"
+    },
+    {
+      "path": "05-nested/层级一/层级二/深层文件.txt",
+      "size_bytes": 62,
+      "sha256": "33569b123fa88e80003498d2f10e177308613cfc05b792b34a19cbe59c7700c0"
+    },
+    {
+      "path": "06-unicode 文件夹/日本語/テストファイル.txt",
+      "size_bytes": 61,
+      "sha256": "f58911371b33291677aec08f891cec35396e0342b450a78d25da21dc1fc4c5c6"
+    },
+    {
+      "path": "06-unicode 文件夹/日本語/絵文字😀.dat",
+      "size_bytes": 2301,
+      "sha256": "512f2b8458fb2a373c93145de5182144f8acd80d169046e588ad8ef79bc938af"
+    },
+    {
+      "path": "06-unicode 文件夹/한국어 테스트.txt",
+      "size_bytes": 51,
+      "sha256": "54fa479dc0beb810ec3dba70e4c795a611fd02027e75ad4b6fdabfc193ff90fd"
+    },
+    {
+      "path": "07-many-files/group-01/item-001.bin",
+      "size_bytes": 2994,
+      "sha256": "949acdaf2c33e32fbcc884336eefa75e07f3da2f41234cc760b8f6dcc958f7a8"
+    },
+    {
+      "path": "07-many-files/group-01/item-002.bin",
+      "size_bytes": 866,
+      "sha256": "a2397b71a3af0036b2a7b035a269257fcf531bf2dd48220765514b85b8808b11"
+    },
+    {
+      "path": "07-many-files/group-01/item-003.bin",
+      "size_bytes": 27,
+      "sha256": "0d4677133d502de6137352970addfbf9b05da7efb73f835584ff0a54037b660c"
+    },
+    {
+      "path": "07-many-files/group-01/item-004.bin",
+      "size_bytes": 3139,
+      "sha256": "578fb758d5fb15e9f610d73062b401c5608a5c662fa2411e51b5ae5c24e34a21"
+    },
+    {
+      "path": "07-many-files/group-01/item-005.bin",
+      "size_bytes": 618,
+      "sha256": "056b7f66dc04e77b3e65e13eefcdf7d273c78534dc34f00608b9f532a185c14a"
+    },
+    {
+      "path": "07-many-files/group-01/item-006.bin",
+      "size_bytes": 27,
+      "sha256": "2cbcab33d11a92125207b1582dc03d50efe8d2c34660e39bf6e090875f3b2775"
+    },
+    {
+      "path": "07-many-files/group-01/item-007.bin",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "07-many-files/group-01/item-008.bin",
+      "size_bytes": 2318,
+      "sha256": "66e143819f8bbaead15162482aed90786c9c5af3d697bb37fdfb89c34b74aa7f"
+    },
+    {
+      "path": "07-many-files/group-01/item-009.bin",
+      "size_bytes": 27,
+      "sha256": "28c7436ad62475aa1d271d71a68c7c75353a331bc0539fbcd1a5a29e3b883576"
+    },
+    {
+      "path": "07-many-files/group-01/item-010.bin",
+      "size_bytes": 1122,
+      "sha256": "e8bd57ff79af47cf71cc26043dfa83bc6fb4d698dc155ba14d3d18429dd3565b"
+    },
+    {
+      "path": "07-many-files/group-02/item-011.bin",
+      "size_bytes": 3287,
+      "sha256": "90039ade84c47cb01cf6212486fcbc6e461cbd1727c73ff21154e640f3a0799f"
+    },
+    {
+      "path": "07-many-files/group-02/item-012.bin",
+      "size_bytes": 29,
+      "sha256": "b9815b6ead3c3eaf3b0207f18646a3933f5dbb9bb8ca43fbf3841ea72fe33b1d"
+    },
+    {
+      "path": "07-many-files/group-02/item-013.bin",
+      "size_bytes": 1160,
+      "sha256": "8a49e41e3c6a1e360283c6fefa434588b9f7ef2c6429e9da80d07683234512ee"
+    },
+    {
+      "path": "07-many-files/group-02/item-014.bin",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "07-many-files/group-02/item-015.bin",
+      "size_bytes": 29,
+      "sha256": "d57e28fd2c632863dadf6dd1dc692030285358219757b5a30ec69902e224777d"
+    },
+    {
+      "path": "07-many-files/group-02/item-016.bin",
+      "size_bytes": 3450,
+      "sha256": "33e45e7657043dc947accd4e66fe32a1cbf3b7ccfd4285e2458a70becf193882"
+    },
+    {
+      "path": "07-many-files/group-02/item-017.bin",
+      "size_bytes": 2367,
+      "sha256": "f4a31d13534e64b03f4f5ff77bb951b228556c5c3130b9dfc270b7f042d7ebaf"
+    },
+    {
+      "path": "07-many-files/group-02/item-018.bin",
+      "size_bytes": 29,
+      "sha256": "dbca8108606b980c85d0326e8d96e10675ab6891d74ca582e5b389343635195b"
+    },
+    {
+      "path": "07-many-files/group-02/item-019.bin",
+      "size_bytes": 3179,
+      "sha256": "ca7fd8df9d5b8873a0638e6fc7d660816b5d79dcaf9e8e3766c99f4ac7471517"
+    },
+    {
+      "path": "07-many-files/group-02/item-020.bin",
+      "size_bytes": 2271,
+      "sha256": "b331b16c195fec7e21026926fe866dd131661104dfe8b5cebb35314a70b2c456"
+    },
+    {
+      "path": "07-many-files/group-03/item-021.bin",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "07-many-files/group-03/item-022.bin",
+      "size_bytes": 3223,
+      "sha256": "c19220c1e0c056389a8f7dc2409f2ae22d89137873610266216a9b399d13e85b"
+    },
+    {
+      "path": "07-many-files/group-03/item-023.bin",
+      "size_bytes": 1323,
+      "sha256": "bbf261dd93892f9613ca84cd20f0e1aa53c7666002632edbe46e8151a16bea29"
+    },
+    {
+      "path": "07-many-files/group-03/item-024.bin",
+      "size_bytes": 29,
+      "sha256": "7fdea32aa88e3c4711992aa86e6a7cc2b089551d8efdf8467c8a2f4e30bbbfc6"
+    },
+    {
+      "path": "07-many-files/group-03/item-025.bin",
+      "size_bytes": 385,
+      "sha256": "329aa8a8078f52f29f0234dc1ad418c47723a921a681658077b7ad06286e77ff"
+    },
+    {
+      "path": "07-many-files/group-03/item-026.bin",
+      "size_bytes": 3347,
+      "sha256": "70ef504ebfc1c3bb97827e74d7a3b1cdb73995826cc9aeda56e8e14a88fe0f2f"
+    },
+    {
+      "path": "07-many-files/group-03/item-027.bin",
+      "size_bytes": 29,
+      "sha256": "ecaf226a0a08adc70740b99196d7cafe49a0e19eea12600a6d9c29498704b44c"
+    },
+    {
+      "path": "07-many-files/group-03/item-028.bin",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "07-many-files/group-03/item-029.bin",
+      "size_bytes": 2842,
+      "sha256": "2aac35c3c915e131c181388d0ac80f9f27d795a8c75c0afa14be706584ae2239"
+    },
+    {
+      "path": "07-many-files/group-03/item-030.bin",
+      "size_bytes": 29,
+      "sha256": "1a8faf322e74fdeb353ed55ab6f0e3e60809b358218f9fdaa06196eb9e23daae"
+    },
+    {
+      "path": "07-many-files/group-04/item-031.bin",
+      "size_bytes": 1227,
+      "sha256": "76235d25f97165d8b57bda06138f8e8986376e86e7404ffde926c2c76ff30044"
+    },
+    {
+      "path": "07-many-files/group-04/item-032.bin",
+      "size_bytes": 2936,
+      "sha256": "d83bd182ff47a8ecb65ea5866a8a8f399280ba556236ca9fbf7c55fc587ac77e"
+    },
+    {
+      "path": "07-many-files/group-04/item-033.bin",
+      "size_bytes": 29,
+      "sha256": "3efe2f073dc6cf1939cfd29074adbde71b3695f43a4115395d534110abcb9354"
+    },
+    {
+      "path": "07-many-files/group-04/item-034.bin",
+      "size_bytes": 1421,
+      "sha256": "4cadbf24a5ded3f7edf48c4dbd65520dfa6c56abcf8390d267de587fb438194e"
+    },
+    {
+      "path": "07-many-files/group-04/item-035.bin",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "07-many-files/group-04/item-036.bin",
+      "size_bytes": 29,
+      "sha256": "fb2af0f569ba8284062131102067f2513067db2129f347223d2aae8a6cc0c2cd"
+    },
+    {
+      "path": "07-many-files/group-04/item-037.bin",
+      "size_bytes": 1824,
+      "sha256": "10cb79f2b674e229e1f5e0c3d1cc74929fae78adc6e01074564d43812cafb8de"
+    },
+    {
+      "path": "07-many-files/group-04/item-038.bin",
+      "size_bytes": 2260,
+      "sha256": "e797c0aabfed5a1f6158b122810e953a1885bc36c4429b7032378a7416666119"
+    },
+    {
+      "path": "07-many-files/group-04/item-039.bin",
+      "size_bytes": 29,
+      "sha256": "acba872d6e1f3ffd0d140e2b4c108d555b742373d1ecfab6590854b41b4e7d75"
+    },
+    {
+      "path": "07-many-files/group-04/item-040.bin",
+      "size_bytes": 1716,
+      "sha256": "ff2df061e30205b675ad83c807d9238575a47f0cd977860b8dd0741950ac98f3"
+    },
+    {
+      "path": "README.txt",
+      "size_bytes": 608,
+      "sha256": "066e7eab52e680fb6c15bc0588c84bef12bb516cb2f81df633e687fcdf2d69dd"
+    },
+    {
+      "path": "manifest.json",
+      "size_bytes": 11651,
+      "sha256": "08686da87f749421a7a534d5a9533acc09929e7d749145e5979b040a4c007b21"
+    }
+  ]
+}

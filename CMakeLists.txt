@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(FileCrypt VERSION 0.3.0 LANGUAGES CXX)
+project(FileCrypt VERSION 0.3.1 LANGUAGES CXX)
 
 # 项目统一使用标准 C++23，禁止静默降级和编译器扩展。
 set(CMAKE_CXX_STANDARD 23)

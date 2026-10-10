@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: 构建静态依赖和通用 Linux 发布版
         run: |
           docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
@@ -34,9 +34,10 @@ jobs:
             --env FILECRYPT_TEST_CPU=baseline \
             ubuntu:22.04 bash .github/scripts/test-linux.sh ubuntu-22.04-baseline
       - name: 仅保留 Linux 正式可执行文件
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: filecrypt-linux-x86_64
+          archive: true
           path: build/filecrypt
           if-no-files-found: error
           retention-days: 14
@@ -49,7 +50,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: 使用 vcpkg 安装 Botan 和 Zstandard
         run: |
           & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install botan:x64-windows-release zstd:x64-windows-release "--overlay-triplets=$env:GITHUB_WORKSPACE/cmake/triplets"
@@ -70,7 +71,7 @@ jobs:
       - name: 运行正式程序冒烟测试
         run: ctest --test-dir build -C Release -L smoke --output-on-failure
       - name: 运行文件流程集成测试
-        run: ctest --test-dir build -C Release -R "^app_(file|directory)_crypt$" --output-on-failure
+        run: ctest --test-dir build -C Release -L integration -LE smoke --output-on-failure
       - name: 验证 Windows 单文件分发
         run: |
           New-Item -ItemType Directory -Path build/standalone -Force | Out-Null
@@ -80,9 +81,10 @@ jobs:
           & ./build/standalone/filecrypt.exe -h
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 仅保留 Windows 正式可执行文件
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: filecrypt-windows-x86_64
+          archive: true
           path: build/Release/filecrypt.exe
           if-no-files-found: error
           retention-days: 14

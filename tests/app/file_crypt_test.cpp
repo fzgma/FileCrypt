@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <cstdio>
+#include "fixture.hpp"
 
 namespace {
 using namespace filecrypt;
@@ -47,7 +48,7 @@ crypto::Bytes read_file(const std::filesystem::path& path) {
 /// 检查所有失败路径均未遗留本轮临时输出。
 void check_no_temporary(const std::filesystem::path& directory) {
     for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-        check(!entry.path().filename().string().starts_with(".filecrypt-"), "Temporary output leaked");
+        check(!entry.path().filename().u8string().starts_with(u8".filecrypt-"), "Temporary output leaked");
     }
 }
 
@@ -292,7 +293,7 @@ void transaction_tests(const std::filesystem::path& directory) {
         io::OutputTransaction output(target);
         output.write(std::as_bytes(std::span(bytes)));
         for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-            if (entry.path().filename().string().starts_with(".filecrypt-")) old_temporary = entry.path();
+            if (entry.path().filename().u8string().starts_with(u8".filecrypt-")) old_temporary = entry.path();
         }
         check(!old_temporary.empty(), "Cannot find transaction fixture");
         output.commit();
@@ -323,7 +324,12 @@ void file_type_tests(const std::filesystem::path& directory) {
         std::filesystem::remove(encrypted);
         app::encrypt_file(source, encrypted, password, options);
         const auto ciphertext = read_file(encrypted);
-        check(ciphertext[10] == (id & 255) && ciphertext[11] == (id >> 8), "Wrong File Type Header ID");
+        const auto actual_id = static_cast<std::uint16_t>(ciphertext[10] | (std::uint16_t{ciphertext[11]} << 8));
+        if (actual_id != id) {
+            const auto filename = source.filename().u8string();
+            throw std::runtime_error("Wrong File Type Header ID for " + std::string(filename.begin(), filename.end()) +
+                ": expected " + std::to_string(id) + ", got " + std::to_string(actual_id));
+        }
         check(app::inspect_file(encrypted).file_type == (extension.empty() ? "Unknown" : extension),
             "File Type info mismatch");
         auto expected = output;
@@ -413,12 +419,12 @@ void file_type_tests(const std::filesystem::path& directory) {
 int main(int argc, char** argv) {
     try {
         check(argc == 2, "Missing test directory");
-        const std::filesystem::path directory = argv[1];
-        std::filesystem::create_directories(directory);
+        const auto directory = test_fixture::create(argv[1]);
         file_tests(directory);
         compressed_file_tests(directory);
         transaction_tests(directory);
         file_type_tests(directory);
+        std::filesystem::remove_all(directory);
         std::cout << "File encryption tests passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -72,6 +72,11 @@ add_test(NAME cli_directory_crypt COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cli/directory_test.cmake")
 set_tests_properties(cli_directory_crypt PROPERTIES LABELS "integration;smoke")
 
+add_test(NAME cli_directory_corpus COMMAND "${CMAKE_COMMAND}"
+    "-DFILECRYPT=$<TARGET_FILE:filecrypt>" "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/corpus-test"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cli/corpus_test.cmake")
+set_tests_properties(cli_directory_corpus PROPERTIES LABELS "integration;corpus" TIMEOUT 180)
+
 if(WIN32)
     add_executable(console_test cli/console_test.cpp)
     if(MINGW)

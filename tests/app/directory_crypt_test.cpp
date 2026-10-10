@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include "fixture.hpp"
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -51,7 +52,7 @@ auto inventory(const std::filesystem::path& root) {
 }
 void clean(const std::filesystem::path& directory) {
     for (const auto& item : std::filesystem::directory_iterator(directory))
-        check(!item.path().filename().string().starts_with(".filecrypt-"), "Temporary file or directory leaked");
+        check(!item.path().filename().u8string().starts_with(u8".filecrypt-"), "Temporary file or directory leaked");
 }
 const crypto::SecureBytes password{'d', 'i', 'r'};
 app::EncryptOptions options() { app::EncryptOptions result; result.kdf = {8192, 1, 1}; return result; }
@@ -276,9 +277,10 @@ void tests(const std::filesystem::path& base) {
 
 int run_tests(const std::filesystem::path& directory) {
     try {
-        const auto base = std::filesystem::absolute(directory).lexically_normal();
-        std::filesystem::create_directories(base);
-        tests(base); std::cout << "Directory encryption tests passed\n"; return 0;
+        const auto base = test_fixture::create(std::filesystem::absolute(directory).lexically_normal());
+        tests(base);
+        std::filesystem::remove_all(base);
+        std::cout << "Directory encryption tests passed\n"; return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }
 

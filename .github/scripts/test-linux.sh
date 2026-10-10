@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 在目标发行版运行同一批已编译程序，只安装 CLI 测试所需的 CMake。
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/utf8-locale.sh"
 distribution="${1:?缺少发行版标识}"
 case "$distribution" in
     debian*|ubuntu*)
@@ -36,6 +37,7 @@ echo '运行正式程序冒烟测试：格式信息及两种算法的压缩和�
 cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/info" -P tests/cli/info_test.cmake
 cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/crypt" -P tests/cli/crypt_test.cmake
 cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/cli-directory" -P tests/cli/directory_test.cmake
+cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/corpus" -P tests/cli/corpus_test.cmake
 echo '运行文件流程集成测试'
 "${runner[@]}" build/tests/integration/file_crypt_test "$test_root/app"
 "${runner[@]}" build/tests/integration/directory_crypt_test "$test_root/directory"

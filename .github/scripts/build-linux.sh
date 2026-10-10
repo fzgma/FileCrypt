@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 在不预设 v2 指令集的 manylinux_2_28 中构建通用 x86-64 发布版及全部测试。
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/utf8-locale.sh"
 
 export PATH="/opt/python/cp312-cp312/bin:$PATH"
 python -m pip install --disable-pip-version-check cmake==3.31.6 ninja==1.11.1.3
@@ -50,7 +51,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
 cmake --build build --target build_all --parallel 2
 ctest --test-dir build -L unit --output-on-failure
 ctest --test-dir build -L smoke --output-on-failure
-ctest --test-dir build -R '^app_(file|directory)_crypt$' --output-on-failure
+ctest --test-dir build -L integration -LE smoke --output-on-failure
 
 # 所有测试程序也必须能够在没有 Botan 和 C++ 共享运行库的目标容器中执行。
 python .github/scripts/check-linux-elf.py build/filecrypt build/tests/unit/* build/tests/integration/*

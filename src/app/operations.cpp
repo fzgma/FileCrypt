@@ -39,9 +39,13 @@ void generate_sample(const std::filesystem::path& path, const SampleOptions& opt
 void encrypt_file(const std::filesystem::path& input, const std::filesystem::path& output,
     std::span<const std::uint8_t> password, const EncryptOptions& options) {
     io::validate_source_path(input);
-    auto source = std::filesystem::absolute(input).lexically_normal();
-    if (source.filename().empty() && source != source.root_path()) source = source.parent_path();
-    (void)io::inspect_source(source);
+    const auto snapshot = io::inspect_source(input);
+    // 单文件扩展名以用户输入为准，避免 Windows absolute() 消去尾部句点。
+    auto source = input;
+    if (snapshot.directory) {
+        source = std::filesystem::absolute(input).lexically_normal();
+        if (source.filename().empty() && source != source.root_path()) source = source.parent_path();
+    }
     switch (options.version) {
     case 1: v1::encrypt(source, output, password, options); return;
     default: throw std::invalid_argument("Unsupported FileCrypt version");

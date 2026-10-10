@@ -25,12 +25,12 @@ jobs:
       contents: write
     steps:
       - name: 下载本次运行的 Linux 正式程序
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: filecrypt-linux-x86_64
           path: release/linux
       - name: 下载本次运行的 Windows 正式程序
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: filecrypt-windows-x86_64
           path: release/windows

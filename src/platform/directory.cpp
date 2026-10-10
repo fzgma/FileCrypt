@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <optional>
+#include <system_error>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -135,7 +136,7 @@ void DirectoryTransaction::commit() {
     impl_->verify_identity();
 #ifdef _WIN32
     if (!MoveFileExW(impl_->temporary.c_str(), impl_->destination.c_str(), MOVEFILE_WRITE_THROUGH))
-        throw std::runtime_error("Directory commit failed; target may already exist");
+        throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Directory commit failed");
 #elif defined(__linux__)
     // rename() 会替换已有空目录；必须使用内核的原子 no-replace 接口。
     if (syscall(SYS_renameat2, AT_FDCWD, impl_->temporary.c_str(), AT_FDCWD, impl_->destination.c_str(), 1u) != 0)

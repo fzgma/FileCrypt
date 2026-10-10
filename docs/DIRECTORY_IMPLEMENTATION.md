@@ -33,6 +33,8 @@
 
 原始输入路径在消去 `.`/`..` 前逐组件检查，拒绝 `junction/..` 等会被归一化隐藏的源链接；Windows 相对路径先拼接当前目录，避免 absolute() 提前消去组件。Root 与每个条目的 LEB128 编码大小在扫描时精确累计，Index 与 File Data 一起受归档上限约束。
 
+单文件加密保留用户输入路径用于扩展名识别，防止 Windows absolute() 消去尾部句点后把有后缀路径误作无后缀并触发 magic。测试的残留名称检查使用 UTF-8，不经系统 ANSI 代码页转换。
+
 加密输出必须位于源树之外，避免把输出或临时文件打包进源目录。Index 在受限内存中构造，文件内容以 64 KiB 安全缓冲区流式读取：
 
 ```text
@@ -82,6 +84,9 @@ Index Length 在 KDF 和输出创建前受限；解密后在分配 Index 缓冲�
 - `format_directory`：独立二进制向量、UTF-8、LEB128、父链/环、非连续 ID、数据连续性、溢出和运行上限。
 - `app_directory_crypt`：两种算法/两种压缩状态、空目录和 Unicode、多块文件、认证有效的畸形载荷、源变化、平台名称/冲突、提交竞态、暂存根替换、Root LEB128 边界、异常清理和 Linux 权限。
 - `cli_directory_crypt`：正式 CLI 往返、密码错误、资源限制、已有目标保护、目录内输出拒绝；Windows 另验证根、嵌套 junction 和 `junction/..` 路径，通过原生接口仅删除测试链接本身。
+- `cli_directory_corpus`：[固定目录素材](../tests/fixtures/README.md)的 67 文件与 16 子目录，两种算法/压缩开关四组 CLI 往返，校验完整树、文件大小及 SHA-256，拒绝错误密码并确认源未修改。
+
+文件与目录 API / CLI 集成测试使用每轮独立夹具，避免 Administrator 和沙箱账户交替运行时受所有者专属权限影响。成功后仅清理本轮夹具，失败保留现场；不放宽输出的安全权限。
 
 新测试纳入全量构建、Actions 和 Linux 发行版/CPU 运行矩阵。先前 v0.2.0 验证已通过，本阶段的远端结果单独记录在 TODO。
 
