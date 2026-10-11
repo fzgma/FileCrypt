@@ -29,7 +29,7 @@ Botan 的可选指令集优化保留运行时 CPU 探测，不能全局强制启
 
 ## 验证与分发
 
-Linux 构建与发行版/CPU 复验脚本先选择已安装的 UTF-8 locale，并验证字符集，统一设置 `LANG` 和 `LC_ALL`；没有可用 UTF-8 locale 时明确失败。CMake/libarchive 解包目录素材需要该设置，避免默认 C/POSIX locale 无法转换中文及 emoji 文件名。
+Linux 构建与发行版/CPU 复验脚本先选择已安装的 UTF-8 locale，并验证字符集，统一设置 `LANG` 和 `LC_ALL`；没有可用 UTF-8 locale 时明确失败。目录素材使用 Info-ZIP `unzip` 解包，避免 CMake/libarchive 将 NFD 文件名归一化为 NFC。
 
 Linux 构建后执行 7 项单元测试、3 项正式程序冒烟测试和 3 项非冒烟集成测试，共 13 项。非冒烟集成测试包括文件/目录 API 流程及 `cli_directory_corpus` 素材往返，后者校验 93 文件、23 子目录的完整树、文件大小和 SHA-256。
 冒烟测试直接调用正式可执行文件，验证格式生成与读取、两种算法的压缩及无压缩加解密、密码错误和已有输出保护；

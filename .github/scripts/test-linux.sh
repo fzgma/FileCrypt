@@ -6,10 +6,10 @@ distribution="${1:?缺少发行版标识}"
 case "$distribution" in
     debian*|ubuntu*)
         apt-get update
-        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake unzip
         ;;
-    almalinux*) dnf install -y cmake ;;
-    archlinux*) pacman -Syu --noconfirm --needed cmake ;;
+    almalinux*) dnf install -y cmake unzip ;;
+    archlinux*) pacman -Syu --noconfirm --needed cmake unzip ;;
     *) echo "未配置的正式测试发行版：$distribution" >&2; exit 1 ;;
 esac
 getconf GNU_LIBC_VERSION

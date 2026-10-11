@@ -12,7 +12,7 @@
 
 外部的 `directory-corpus.json` 额外记录 ZIP SHA-256、全部 93 个文件的大小与哈希以及 23 个目录路径。因此也能验证原 manifest 自身、空目录及多余条目。
 
-Windows 使用系统 PowerShell 调用 .NET ZIP 解包，保留原始 NFC/NFD 名称；本地 CMake/libarchive 解包会将 NFD 名称归一化成 NFC。Linux 继续使用 CMake 解包，并由 CI 脚本设置 UTF-8 locale。
+Windows 使用系统 PowerShell 调用 .NET ZIP 解包，Linux 使用 Info-ZIP `unzip` 解包，二者都保留原始 NFC/NFD 名称；本地 CMake/libarchive 解包会将 NFD 名称归一化成 NFC。Linux CI 脚本会安装 `unzip` 并设置 UTF-8 locale。
 
 测试 `cli_directory_corpus` 先校验 ZIP 和解包树，再执行 AES-256-GCM / XChaCha20-Poly1305 与压缩 / 不压缩的四组往返，拒绝错误密码，最后确认源目录未改变。每轮夹具独立，成功后清理，失败保留现场。使用测试专用低成本 KDF 参数，不作为生产参数建议。
 
