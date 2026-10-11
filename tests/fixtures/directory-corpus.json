@@ -1,8 +1,8 @@
 {
-  "archive_sha256": "431d7c105c64e26e51e721a51c759c49befade80d228ff332e409db1417399ae",
-  "file_count": 67,
-  "directory_count": 16,
-  "total_bytes": 5920768,
+  "archive_sha256": "8c10dc1144188e8e3e7ed1b8a7b507fb6d60ef6b2cd8b4012748a4a02722224f",
+  "file_count": 93,
+  "directory_count": 23,
+  "total_bytes": 23621278,
   "directories": [
     "00-empty",
     "01-small",
@@ -19,7 +19,14 @@
     "07-many-files/group-02",
     "07-many-files/group-03",
     "07-many-files/group-04",
-    "08-empty-directory"
+    "08-empty-directory",
+    "09-photo",
+    "10-special-filenames",
+    "11-duplicate-content",
+    "11-duplicate-content/alpha",
+    "11-duplicate-content/beta",
+    "11-duplicate-content/nested",
+    "11-duplicate-content/nested/deep"
   ],
   "files": [
     {
@@ -348,14 +355,144 @@
       "sha256": "ff2df061e30205b675ad83c807d9238575a47f0cd977860b8dd0741950ac98f3"
     },
     {
+      "path": "09-photo/SOURCES.md",
+      "size_bytes": 2077,
+      "sha256": "9d3f9c75cdc2a17a5f15785e95f1346409b9a89f64b2d8860be35435c6774fb6"
+    },
+    {
+      "path": "09-photo/blue-flower-large.jpg",
+      "size_bytes": 9981045,
+      "sha256": "bc677e0c8fe73332f99cbc164351d8781fda8f5d9f4db48a1b798cb9d2fc334e"
+    },
+    {
+      "path": "09-photo/cat-field.jpg",
+      "size_bytes": 3026693,
+      "sha256": "8ba63e4f7ad406fa42333cb611da6631b87d2385cb513671875b692e274739fd"
+    },
+    {
+      "path": "09-photo/dog-portrait.jpg",
+      "size_bytes": 491397,
+      "sha256": "5c9c4057e19eb9ec884e0325ff0e995b3e1defefb2ceaea83a705f15ae833051"
+    },
+    {
+      "path": "09-photo/mountains-landscape.jpg",
+      "size_bytes": 3878306,
+      "sha256": "4e6661606c195b2462c0f2321a7feefe2ae2fc081499f3462a30fbb108cd7f8e"
+    },
+    {
+      "path": "09-photo/花瓣特写.jpg",
+      "size_bytes": 183845,
+      "sha256": "cc72b68e5eac20bb6bf41e0713369eb3d35e44c3cbffb279a84ae47612180505"
+    },
+    {
+      "path": "10-special-filenames/.hidden.txt",
+      "size_bytes": 28,
+      "sha256": "80a553dda593d5ff73b0d2a1480b9a18b8c6ca85e3a031dec8af11d8a236086c"
+    },
+    {
+      "path": "10-special-filenames/brackets (test) [v1] !.txt",
+      "size_bytes": 57,
+      "sha256": "57dd2964ea9cc1badc0d2ac71c8cb573b1067165181f665fe98427f75881ce1d"
+    },
+    {
+      "path": "10-special-filenames/café-NFD.txt",
+      "size_bytes": 40,
+      "sha256": "63ba5fa58af318c9e20c305bd03406b0e6299e2b77cce81d122585f363960e22"
+    },
+    {
+      "path": "10-special-filenames/café-NFC.txt",
+      "size_bytes": 38,
+      "sha256": "9542c9c68651b821f8405bbaacb4c9a6be880770bed49b9593fc29a323b62340"
+    },
+    {
+      "path": "10-special-filenames/emoji-🐈-and-🚀.txt",
+      "size_bytes": 26,
+      "sha256": "f94ede364c25249fb5309986514ea41809de0884c77413109d021e88ded100e7"
+    },
+    {
+      "path": "10-special-filenames/file with spaces.txt",
+      "size_bytes": 45,
+      "sha256": "126697a3331dc16172b9706b0de5fe22d2abdb6a054cb0e1616b5dca1af10131"
+    },
+    {
+      "path": "10-special-filenames/long-segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_segment_end.txt",
+      "size_bytes": 51,
+      "sha256": "bd974f2e983e325a9dc1bd458bc052131ba87dfeb9691596ec26b879fe4f17dc"
+    },
+    {
+      "path": "10-special-filenames/multiple.dots.tar.gz.txt",
+      "size_bytes": 30,
+      "sha256": "b6582c41318df3ff4baf7942add926577ce3944f7af9c75d0ece81c369214023"
+    },
+    {
+      "path": "10-special-filenames/punctuation #1 @home $100% & plus+.txt",
+      "size_bytes": 41,
+      "sha256": "667ce9723b193a5e9f4bc6d9bccf8abd0aace18207bf0ddebac90fd1baec229e"
+    },
+    {
+      "path": "10-special-filenames/中文-日本語-한글.txt",
+      "size_bytes": 67,
+      "sha256": "bef32b29697d23810c45961440227bb5d0c056532fcdf6b70ae1ee39e07f9109"
+    },
+    {
+      "path": "11-duplicate-content/alpha/empty-copy.dat",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "11-duplicate-content/alpha/record.json",
+      "size_bytes": 67,
+      "sha256": "732afb151befb9bc2c81cc83c5efe921645e6ad9d3fbe33a9957ed9402089c23"
+    },
+    {
+      "path": "11-duplicate-content/alpha/same-binary.bin",
+      "size_bytes": 65536,
+      "sha256": "d5259e1f925e9f3a7feca726b5d9938b59d55e48ce44f48161604c8b010e9af1"
+    },
+    {
+      "path": "11-duplicate-content/alpha/same-text.txt",
+      "size_bytes": 96,
+      "sha256": "8bc7eef43171c8ad881246f21c638fe911503660966e077ca051d035b16bad64"
+    },
+    {
+      "path": "11-duplicate-content/beta/record.json",
+      "size_bytes": 67,
+      "sha256": "732afb151befb9bc2c81cc83c5efe921645e6ad9d3fbe33a9957ed9402089c23"
+    },
+    {
+      "path": "11-duplicate-content/beta/same-binary.bin",
+      "size_bytes": 65536,
+      "sha256": "d5259e1f925e9f3a7feca726b5d9938b59d55e48ce44f48161604c8b010e9af1"
+    },
+    {
+      "path": "11-duplicate-content/beta/same-text.txt",
+      "size_bytes": 96,
+      "sha256": "8bc7eef43171c8ad881246f21c638fe911503660966e077ca051d035b16bad64"
+    },
+    {
+      "path": "11-duplicate-content/nested/deep/empty-copy.dat",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "11-duplicate-content/nested/deep/same-text.txt",
+      "size_bytes": 96,
+      "sha256": "8bc7eef43171c8ad881246f21c638fe911503660966e077ca051d035b16bad64"
+    },
+    {
+      "path": "11-duplicate-content/nested/record.json",
+      "size_bytes": 67,
+      "sha256": "732afb151befb9bc2c81cc83c5efe921645e6ad9d3fbe33a9957ed9402089c23"
+    },
+    {
       "path": "README.txt",
       "size_bytes": 608,
       "sha256": "066e7eab52e680fb6c15bc0588c84bef12bb516cb2f81df633e687fcdf2d69dd"
     },
     {
       "path": "manifest.json",
-      "size_bytes": 11651,
-      "sha256": "08686da87f749421a7a534d5a9533acc09929e7d749145e5979b040a4c007b21"
+      "size_bytes": 16814,
+      "sha256": "4aa2ee0a409b7c2ead7f3710d4722cec958b415718ae1d14db86e4a1ed93f8c7"
     }
   ]
 }

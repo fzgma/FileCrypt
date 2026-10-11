@@ -84,7 +84,7 @@ Index Length 在 KDF 和输出创建前受限；解密后在分配 Index 缓冲�
 - `format_directory`：独立二进制向量、UTF-8、LEB128、父链/环、非连续 ID、数据连续性、溢出和运行上限。
 - `app_directory_crypt`：两种算法/两种压缩状态、空目录和 Unicode、多块文件、认证有效的畸形载荷、源变化、平台名称/冲突、提交竞态、暂存根替换、Root LEB128 边界、异常清理和 Linux 权限。
 - `cli_directory_crypt`：正式 CLI 往返、密码错误、资源限制、已有目标保护、目录内输出拒绝；Windows 另验证根、嵌套 junction 和 `junction/..` 路径，通过原生接口仅删除测试链接本身。
-- `cli_directory_corpus`：[固定目录素材](../tests/fixtures/README.md)的 67 文件与 16 子目录，两种算法/压缩开关四组 CLI 往返，校验完整树、文件大小及 SHA-256，拒绝错误密码并确认源未修改。
+- `cli_directory_corpus`：[固定目录素材](../tests/fixtures/README.md)的 93 文件与 23 子目录，包含照片、特殊文件名和重复内容，两种算法/压缩开关四组 CLI 往返，校验完整树、文件大小及 SHA-256，拒绝错误密码并确认源未修改。
 
 文件与目录 API / CLI 集成测试使用每轮独立夹具，避免 Administrator 和沙箱账户交替运行时受所有者专属权限影响。成功后仅清理本轮夹具，失败保留现场；不放宽输出的安全权限。
 

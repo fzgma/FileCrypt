@@ -31,11 +31,10 @@ Botan 的可选指令集优化保留运行时 CPU 探测，不能全局强制启
 
 Linux 构建与发行版/CPU 复验脚本先选择已安装的 UTF-8 locale，并验证字符集，统一设置 `LANG` 和 `LC_ALL`；没有可用 UTF-8 locale 时明确失败。CMake/libarchive 解包目录素材需要该设置，避免默认 C/POSIX locale 无法转换中文及 emoji 文件名。
 
-Linux 和 MSVC 构建后分别执行 7 项单元测试、3 项正式程序冒烟测试和 3 项非冒烟集成测试，共 13 项。非冒烟集成测试包括文件/目录 API 流程及 `cli_directory_corpus` 素材往返，后者校验 67 文件、16 子目录的完整树、文件大小和 SHA-256。
-Windows 另执行 1 项隐藏控制台测试，验证非 UTF-8 代码页下的中文标准输出、错误输出及退出后的代码页恢复。
+Linux 构建后执行 7 项单元测试、3 项正式程序冒烟测试和 3 项非冒烟集成测试，共 13 项。非冒烟集成测试包括文件/目录 API 流程及 `cli_directory_corpus` 素材往返，后者校验 93 文件、23 子目录的完整树、文件大小和 SHA-256。
 冒烟测试直接调用正式可执行文件，验证格式生成与读取、两种算法的压缩及无压缩加解密、密码错误和已有输出保护；
-CLI 测试同时覆盖中文、空格及 emoji 路径和重定向 UTF-8 输出；Windows 控制台测试也使用 `smoke` 标签。
-CTest 单元测试使用 `unit` 标签，所有集成测试使用 `integration` 标签，冒烟测试额外使用 `smoke` 标签，素材测试额外使用 `corpus` 标签。构建流程通过 `-L integration -LE smoke` 选择 3 项非冒烟集成测试；Windows 含控制台测试共 14 项。
+CLI 测试同时覆盖中文、空格及 emoji 路径和重定向 UTF-8 输出。
+CTest 单元测试使用 `unit` 标签，所有集成测试使用 `integration` 标签，冒烟测试额外使用 `smoke` 标签，素材测试额外使用 `corpus` 标签。构建流程通过 `-L integration -LE smoke` 选择 3 项非冒烟集成测试。
 Linux 随后审计正式程序和测试程序的 ELF：
 
 - ELF64、x86-64，使用 `/lib64/ld-linux-x86-64.so.2` 动态加载器。
@@ -60,16 +59,13 @@ Linux 随后审计正式程序和测试程序的 ELF：
 内容只有正式可执行文件 `filecrypt`；测试程序、依赖源码、文档和构建信息均不上传。
 构建版本、依赖校验信息及 ELF 审计结果留在 Actions 日志。
 Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即可使用，
-无需另外安装 Botan、Zstandard 或 C++ 运行库。Windows MSVC 同样在测试通过后上传仅含 `filecrypt.exe` 的
-`filecrypt-windows-x86_64` Artifact，依赖与 MSVC 运行库静态链接，vcpkg 仅编译 Release。
+无需另外安装 Botan、Zstandard 或 C++ 运行库。
 
-推送 `v*` 标签触发独立发布工作流，复用上述两平台构建测试；全部验证成功后下载同次运行的 Artifacts，
-将 Linux 和 Windows 可执行文件分别命名为 `filecrypt-linux-x86_64`、`filecrypt-windows-x86_64.exe`，
-生成包含两者 SHA-256 的 `SHA256SUMS` 并创建 GitHub Release；任一验证失败均不发布。
+推送 `v*` 标签触发[发布工作流](../.github/workflows/release.yml)。发布阶段从同次运行下载 Linux Artifact，将正式程序命名为 `filecrypt-linux-x86_64`，纳入 `SHA256SUMS` 并上传 GitHub Release。发布工作流要求全部构建验证任务成功，任一失败均不发布。
 
-工作流依赖已更新为 checkout v7.0.1、upload-artifact v7.0.2、download-artifact v8.0.1，均使用 Node 24。上传显式设置 `archive: true` 保留命名 ZIP Artifact，下载使用默认解压和摘要校验，继续只从同次运行获取两平台产物。
+工作流使用 checkout v7.0.1、upload-artifact v7.0.2、download-artifact v8.0.1，均使用 Node 24。上传显式设置 `archive: true` 保留命名 ZIP Artifact，下载使用默认解压和摘要校验，只从同次运行获取产物。
 
-v0.2.0 的 Linux 与 MSVC Actions 验证已由用户确认全部成功。本阶段新增目录功能的 Linux/发行版矩阵/CPU 模拟及 MSVC 验证待新一轮 Actions 确认；Windows/MinGW 本地检查同步记录在 TODO。
+v0.2.0 的 Linux Actions 验证已由用户确认成功。本阶段目录功能、发行版矩阵及 CPU 模拟的远端验证进度见 [TODO](TODO.md)。
 
 ## 参考资料
 

@@ -153,7 +153,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 Visual Studio 等多配置生成器构建时增加 `--config Release`，测试时增加 `-C Release`。
-开发构建默认使用共享依赖库，运行时需确保相关库可被加载。发布构建的链接与平台验证流程见 [发布政策](docs/LINUX_RELEASE.md)。
+开发构建默认使用共享依赖库，运行时需确保相关库可被加载。发布构建的链接与平台验证流程见 [Linux 发布政策](docs/LINUX_RELEASE.md)和 [Windows MSVC 发布](docs/MSVC_RELEASE.md)。
 
 ## 5. 项目结构
 
@@ -196,7 +196,8 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 * [目录格式](docs/DIRECTORY_FORMAT.md)
 * [目录实现与运行策略](docs/DIRECTORY_IMPLEMENTATION.md)
 * [项目架构](docs/ARCHITECTURE.md)
-* [发布政策](docs/LINUX_RELEASE.md)
+* [Linux 发布政策](docs/LINUX_RELEASE.md)
+* [Windows MSVC 发布](docs/MSVC_RELEASE.md)
 * [开发进度与待办](docs/TODO.md)
 
 ## 8. 开源协议

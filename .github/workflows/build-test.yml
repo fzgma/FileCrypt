@@ -51,10 +51,38 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: 使用 vcpkg 安装 Botan 和 Zstandard
+      - name: 准备 vcpkg 二进制缓存
+        id: vcpkg-cache-config
         run: |
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/vcpkg-binary-cache" -Force | Out-Null
+          "VCPKG_BINARY_SOURCES=clear;files,$env:RUNNER_TEMP/vcpkg-binary-cache,readwrite" >> $env:GITHUB_ENV
+          $revision = git -C "$env:VCPKG_INSTALLATION_ROOT" rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "revision=$revision" >> $env:GITHUB_OUTPUT
+      - name: 恢复 vcpkg 二进制缓存
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: vcpkg-binary-v1-windows-2022-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            vcpkg-binary-v1-windows-2022-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-
+      - name: 使用 vcpkg 安装 Botan 和 Zstandard
+        id: vcpkg-install
+        run: |
+          $cacheDirectory = "$env:RUNNER_TEMP/vcpkg-binary-cache"
+          $before = @(Get-ChildItem -LiteralPath $cacheDirectory -Filter '*.zip' -Recurse -File).Count
           & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install botan:x64-windows-release zstd:x64-windows-release "--overlay-triplets=$env:GITHUB_WORKSPACE/cmake/triplets"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $after = @(Get-ChildItem -LiteralPath $cacheDirectory -Filter '*.zip' -Recurse -File).Count
+          if ($after -gt $before) { "cache-updated=true" >> $env:GITHUB_OUTPUT }
+      # 安装成功且新增二进制包时立即保存，后续测试失败也能复用依赖。
+      - name: 保存 vcpkg 二进制缓存
+        if: steps.vcpkg-install.outputs.cache-updated == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: 配置 Release
         run: >-
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64

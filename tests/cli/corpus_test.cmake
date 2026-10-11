@@ -13,7 +13,18 @@ if(EXISTS "${run_root}")
 endif()
 set(source "${run_root}/素材 原始 🔐")
 file(MAKE_DIRECTORY "${source}")
-file(ARCHIVE_EXTRACT INPUT "${fixture_dir}/directory-corpus.zip" DESTINATION "${source}")
+if(WIN32)
+    # Windows libarchive 会将 NFD 名称归一化为 NFC；.NET ZIP 解包保留原始名称。
+    execute_process(COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+        -File "${CMAKE_CURRENT_LIST_DIR}/extract_corpus.ps1"
+        -Archive "${fixture_dir}/directory-corpus.zip" -Destination "${source}"
+        RESULT_VARIABLE extracted OUTPUT_VARIABLE extract_output ERROR_VARIABLE extract_error)
+    if(NOT extracted EQUAL 0)
+        message(FATAL_ERROR "素材 ZIP 解包失败：${extracted}\n${extract_output}\n${extract_error}")
+    endif()
+else()
+    file(ARCHIVE_EXTRACT INPUT "${fixture_dir}/directory-corpus.zip" DESTINATION "${source}")
+endif()
 file(WRITE "${run_root}/encrypt-password.txt" "corpus password\ncorpus password\n")
 file(WRITE "${run_root}/decrypt-password.txt" "corpus password\n")
 file(WRITE "${run_root}/wrong-password.txt" "wrong\n")
