@@ -107,7 +107,7 @@ std::uint16_t detect_file_type(const std::filesystem::path& path, std::istream& 
     const auto filename = lower_ascii(path.filename().u8string());
     const format::FileTypeDefinition* longest = nullptr;
     for (const auto& type : format::file_type_definitions()) {
-        if (type.extension.find('.') != std::string_view::npos &&
+        if (type.extension.contains('.') &&
             filename.ends_with("." + std::string(type.extension)) &&
             (!longest || type.extension.size() > longest->extension.size())) {
             longest = &type;

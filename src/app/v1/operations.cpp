@@ -2,6 +2,7 @@
 #include <filecrypt/format/v1/metadata.hpp>
 #include <filecrypt/format/v1/registry.hpp>
 #include <filecrypt/io/file.hpp>
+#include <ranges>
 #include <stdexcept>
 
 namespace filecrypt::app::v1 {
@@ -81,8 +82,8 @@ void sample(const std::filesystem::path& path, const SampleOptions& options) {
     header.metadata_length = metadata_layout(header).metadata_size;
     const auto header_bytes = serialize(header);
     const auto metadata_bytes = serialize_metadata(header, metadata);
-    std::vector<std::byte> file_bytes(header_bytes.begin(), header_bytes.end());
-    file_bytes.insert(file_bytes.end(), metadata_bytes.begin(), metadata_bytes.end());
+    std::vector<std::byte> file_bytes(std::from_range, header_bytes);
+    file_bytes.append_range(metadata_bytes);
     filecrypt::io::write_new_file(path, file_bytes);
 }
 }

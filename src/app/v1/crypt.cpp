@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <fstream>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 
 namespace filecrypt::app::v1 {
@@ -36,12 +37,9 @@ std::uint16_t algorithm_id(crypto::Algorithm algorithm) {
 
 /// 显式转换公开协议字节到 Crypto 字节类型。
 crypto::Bytes crypto_bytes(std::span<const std::byte> bytes) {
-    crypto::Bytes result;
-    result.reserve(bytes.size());
-    for (const auto value : bytes) {
-        result.push_back(std::to_integer<std::uint8_t>(value));
-    }
-    return result;
+    return bytes | std::views::transform([](std::byte value) {
+        return std::to_integer<std::uint8_t>(value);
+    }) | std::ranges::to<crypto::Bytes>();
 }
 
 /// 读取有界输入块，区分正常文件末尾和读取错误。
@@ -112,9 +110,9 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     std::transform(salt.begin(), salt.end(), metadata.salt.begin(),
         [](std::uint8_t value) { return static_cast<std::byte>(value); });
     const auto nonce = crypto::random_bytes(crypto::nonce_size(options.algorithm));
-    for (const auto value : nonce) {
-        metadata.nonce.push_back(static_cast<std::byte>(value));
-    }
+    metadata.nonce = nonce | std::views::transform([](std::uint8_t value) {
+        return static_cast<std::byte>(value);
+    }) | std::ranges::to<std::vector<std::byte>>();
     const auto aad = crypto_bytes(format::build_aad(header, metadata));
     const auto key = crypto::derive_key(password, salt, options.kdf, options.limits,
         format::algorithm_definition(header.algorithm).key_size);

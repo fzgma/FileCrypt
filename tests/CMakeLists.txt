@@ -19,8 +19,11 @@ target_link_libraries(compression_test PRIVATE FileCrypt::Compression Zstd::Zstd
 add_executable(directory_test format/v1/directory_test.cpp)
 target_link_libraries(directory_test PRIVATE FileCrypt::Format)
 
+add_executable(expected_test format/expected_test.cpp)
+target_link_libraries(expected_test PRIVATE FileCrypt::Format)
+
 # 单元测试可单独构建，测试程序统一放在 build/tests/unit。
-set(unit_test_targets header_test metadata_test aad_test detect_test crypto_test compression_test directory_test)
+set(unit_test_targets header_test metadata_test aad_test detect_test crypto_test compression_test directory_test expected_test)
 foreach(test_target IN LISTS unit_test_targets)
     set_target_properties(${test_target} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unit")
@@ -59,6 +62,7 @@ set(detect_test_command "$<TARGET_FILE:detect_test>")
 set(crypto_test_command "$<TARGET_FILE:crypto_test>")
 set(compression_test_command "$<TARGET_FILE:compression_test>")
 set(directory_test_command "$<TARGET_FILE:directory_test>")
+set(expected_test_command "$<TARGET_FILE:expected_test>")
 set(file_crypt_test_command "$<TARGET_FILE:file_crypt_test>")
 set(directory_crypt_test_command "$<TARGET_FILE:directory_crypt_test>")
 set(filecrypt_command "$<TARGET_FILE:filecrypt>")

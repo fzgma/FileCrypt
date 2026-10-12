@@ -9,11 +9,11 @@ permissions:
 
 jobs:
   linux:
-    name: Linux / GCC 15 / x86-64 / glibc 2.34
-    runs-on: ubuntu-24.04
+    name: Linux / GCC 15 / x86-64
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - name: 构建静态依赖和通用 Linux 发布版
         run: |
           docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
@@ -34,7 +34,7 @@ jobs:
             --env FILECRYPT_TEST_CPU=baseline \
             ubuntu:22.04 bash .github/scripts/test-linux.sh ubuntu-22.04-baseline
       - name: 仅保留 Linux 正式可执行文件
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: filecrypt-linux-x86_64
           archive: true
@@ -44,13 +44,13 @@ jobs:
 
   msvc:
     name: Windows / MSVC x64
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - name: 准备 vcpkg 二进制缓存
         id: vcpkg-cache-config
         run: |
@@ -61,12 +61,12 @@ jobs:
           "revision=$revision" >> $env:GITHUB_OUTPUT
       - name: 恢复 vcpkg 二进制缓存
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
-          key: vcpkg-binary-v1-windows-2022-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: vcpkg-binary-v1-windows-2025-vs2026-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            vcpkg-binary-v1-windows-2022-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-
+            vcpkg-binary-v1-windows-2025-vs2026-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-
       - name: 使用 vcpkg 安装 Botan 和 Zstandard
         id: vcpkg-install
         run: |
@@ -79,13 +79,13 @@ jobs:
       # 安装成功且新增二进制包时立即保存，后续测试失败也能复用依赖。
       - name: 保存 vcpkg 二进制缓存
         if: steps.vcpkg-install.outputs.cache-updated == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: 配置 Release
         run: >-
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          cmake -S . -B build -G "Visual Studio 18 2026" -A x64
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows-release
           "-DVCPKG_OVERLAY_TRIPLETS=$env:GITHUB_WORKSPACE/cmake/triplets"
@@ -109,7 +109,7 @@ jobs:
           & ./build/standalone/filecrypt.exe -h
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 仅保留 Windows 正式可执行文件
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: filecrypt-windows-x86_64
           archive: true

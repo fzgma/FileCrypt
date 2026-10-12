@@ -110,8 +110,10 @@ std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const dire
 }
 
 std::vector<std::byte> serialize_index(std::span<const DirectoryEntry> entries, const directory::Limits& limits) {
-    (void)validate_index(entries, limits);
+    const auto encoded_size = validate_index(entries, limits);
     std::vector<std::byte> bytes;
+    require(encoded_size <= bytes.max_size(), "Directory Index exceeds container capacity");
+    bytes.reserve(static_cast<std::size_t>(encoded_size));
     for (const auto& entry : entries) {
         put(bytes, entry.id); put(bytes, entry.parent_id); put(bytes, std::to_underlying(entry.type));
         put(bytes, entry.data_offset); put(bytes, entry.data_length);
@@ -128,6 +130,9 @@ std::vector<DirectoryEntry> deserialize_index(std::span<const std::byte> bytes, 
     require(bytes.size() <= limits.max_output_bytes && file_data_length <= limits.max_output_bytes - bytes.size(),
         "Directory archive exceeds output policy");
     std::vector<DirectoryEntry> entries;
+    // 每个条目至少包含固定字段和一个字节的 Name Length，限制初始容量上界。
+    const auto capacity = std::min<std::uint64_t>(limits.max_entries, bytes.size() / 27 + 1);
+    entries.reserve(static_cast<std::size_t>(capacity));
     std::size_t position{};
     while (position < bytes.size()) {
         require(entries.size() < limits.max_entries, "Directory Entry count exceeds policy");

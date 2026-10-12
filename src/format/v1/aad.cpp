@@ -29,4 +29,23 @@ std::vector<std::byte> build_aad(std::span<const std::byte> header_bytes,
     aad.append_range(authenticated_metadata);
     return aad;
 }
+
+std::expected<std::vector<std::byte>, Error> try_build_aad(const Header& header,
+    const Metadata& metadata) {
+    try {
+        return build_aad(header, metadata);
+    } catch (const std::exception& error) {
+        return std::unexpected(error_from_exception(error));
+    }
+}
+
+std::expected<std::vector<std::byte>, Error> try_build_aad(
+    std::span<const std::byte> header_bytes, std::span<const std::byte> metadata_bytes) {
+    try {
+        return build_aad(header_bytes, metadata_bytes);
+    } catch (const std::exception& error) {
+        return std::unexpected(error_from_exception(error));
+    }
+}
+
 } // namespace filecrypt::format::v1

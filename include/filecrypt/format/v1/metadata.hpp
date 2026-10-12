@@ -2,6 +2,7 @@
 
 #include <filecrypt/format/v1/header.hpp>
 
+#include <expected>
 #include <optional>
 #include <vector>
 
@@ -63,6 +64,10 @@ struct MetadataLayout {
 
 /// 校验并解析完整 Metadata 区域，输入长度必须精确匹配 Header.metadata_length。
 [[nodiscard]] Metadata deserialize_metadata(const Header& header,
+    std::span<const std::byte> data);
+
+/// expected 试点接口：将 Metadata 格式错误转换为统一错误值。
+[[nodiscard]] std::expected<Metadata, Error> try_deserialize_metadata(const Header& header,
     std::span<const std::byte> data);
 
 // 所有格式错误和不支持的协议编号均抛出 std::invalid_argument。

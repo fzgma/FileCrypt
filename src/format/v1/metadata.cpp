@@ -172,4 +172,14 @@ Metadata deserialize_metadata(const Header& header, std::span<const std::byte> d
         [](std::byte value) { return value == std::byte{0}; }), "Nonzero Metadata padding");
     return metadata;
 }
+
+std::expected<Metadata, Error> try_deserialize_metadata(const Header& header,
+    std::span<const std::byte> data) {
+    try {
+        return deserialize_metadata(header, data);
+    } catch (const std::exception& error) {
+        return std::unexpected(error_from_exception(error));
+    }
+}
+
 } // namespace filecrypt::format::v1

@@ -2,6 +2,7 @@
 #include <filecrypt/io/directory.hpp>
 #include <algorithm>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <set>
 
@@ -65,7 +66,7 @@ DirectoryScan scan_directory(const std::filesystem::path& input, const std::file
                 throw std::length_error("Directory Entry count exceeds policy");
             children.push_back(child.path());
         }
-        std::sort(children.begin(), children.end(), [](const auto& a, const auto& b) { return utf8_name(a) < utf8_name(b); });
+        std::ranges::sort(children, {}, [](const auto& path) { return utf8_name(path); });
         for (const auto& child : children) {
             if (depths[i] >= limits.max_depth || scan.entries.size() >= limits.max_entries || scan.entries.size() >= 0xFFFFFFFF)
                 throw std::length_error("Directory count or depth exceeds policy");

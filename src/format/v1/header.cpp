@@ -58,4 +58,12 @@ Header deserialize(std::span<const std::byte> data) {
     return header;
 }
 
+std::expected<Header, Error> try_deserialize(std::span<const std::byte> data) {
+    try {
+        return deserialize(data);
+    } catch (const std::exception& error) {
+        return std::unexpected(error_from_exception(error));
+    }
+}
+
 } // namespace filecrypt::format::v1
