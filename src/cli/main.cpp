@@ -70,12 +70,18 @@ std::string argument_utf8(const wchar_t* text) {
     if (size == 0) {
         throw std::invalid_argument("Invalid Unicode command-line argument");
     }
-    std::string result(static_cast<std::size_t>(size), '\0');
-    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1,
-            result.data(), size, nullptr, nullptr) != size) {
+    std::string result;
+    int written{};
+    // 回调不抛异常；成功时直接排除终止符，失败在回调结束后报告。
+    result.resize_and_overwrite(static_cast<std::size_t>(size),
+        [&](char* buffer, std::size_t) noexcept -> std::size_t {
+            written = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1,
+                buffer, size, nullptr, nullptr);
+            return written == size ? static_cast<std::size_t>(size - 1) : 0;
+        });
+    if (written != size) {
         throw std::runtime_error("Command-line UTF-8 conversion failed");
     }
-    result.pop_back();
     return result;
 }
 #endif
@@ -228,6 +234,7 @@ enum class OptionId {
 
 struct OptionSpec {
     std::string_view name;
+    // 别名和互斥写法共用 claim，使重复检测不依赖用户采用哪种拼写。
     std::string_view claim;
     OptionId id;
     bool encrypt_only;
@@ -254,12 +261,14 @@ constexpr std::array option_specs{
     OptionSpec{"max-depth", "max-depth", OptionId::max_depth, false, false},
     OptionSpec{"max-archive-bytes", "max-archive-bytes", OptionId::max_archive, false, false}};
 
+/// 按完整名称或别名查询静态选项表，未找到时返回空指针。
 const OptionSpec* find_option(std::string_view name) {
     const auto found = std::ranges::find_if(option_specs,
         [name](const auto& spec) { return spec.name == name; });
     return found == option_specs.end() ? nullptr : &*found;
 }
 
+/// 解析两个固定路径之后的选项，在读取密码前拒绝重复或不适用的参数。
 void parse_file_options(bool encrypting, int argc, char** argv,
     filecrypt::app::EncryptOptions& options,
     filecrypt::compression::DecompressionLimits& decompression_limits,
@@ -333,6 +342,7 @@ void crypt_file(bool encrypting, int argc, char** argv) {
     parse_file_options(encrypting, argc, argv, options, decompression_limits, seen);
     const auto input = encrypting ? argument_path(argv[2]) : ciphertext_path(argument_path(argv[2]));
     const auto output = encrypting ? ciphertext_path(argument_path(argv[3])) : argument_path(argv[3]);
+    // 显式解压输出上限也收紧目录归档上限，保留两项策略中更严格的值。
     if (!encrypting && seen.contains("max-output-bytes")) options.directory_limits.max_output_bytes =
         std::min(options.directory_limits.max_output_bytes, decompression_limits.max_output_bytes);
     auto password = filecrypt::io::read_password("密码：");
@@ -414,6 +424,7 @@ int wmain(int argc, wchar_t** argv) {
     }
 }
 #else
+/// 将原生窄字符参数交给统一 CLI 分发流程。
 int main(int argc, char** argv) {
     return run_cli(argc, argv);
 }

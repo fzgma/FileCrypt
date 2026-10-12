@@ -65,6 +65,7 @@ void compress(const Reader& read, const Writer& write, int level) {
         ZSTD_inBuffer input{source.bytes.data(), count, 0};
         const auto mode = count == 0 ? ZSTD_e_end : ZSTD_e_continue;
         std::size_t remaining;
+        // 输入耗尽后仍需排空结束帧，直到 Zstandard 确认没有待输出字节。
         do {
             ZSTD_outBuffer output{target.bytes.data(), target.bytes.size(), 0};
             remaining = checked(ZSTD_compressStream2(context.get(), &output, &input, mode));
@@ -89,6 +90,7 @@ void decompress(const Reader& read, const Writer& write, const DecompressionLimi
     Buffer source;
     Buffer target;
     std::uint64_t total = 0;
+    // 初始非零使空载荷也失败；只有恰好读完完整帧时 remaining 才为零。
     std::size_t remaining = 1;
     while (const auto count = read_chunk(read, source)) {
         ZSTD_inBuffer input{source.bytes.data(), count, 0};
@@ -97,6 +99,7 @@ void decompress(const Reader& read, const Writer& write, const DecompressionLimi
             ZSTD_outBuffer output{target.bytes.data(), target.bytes.size(), 0};
             remaining = checked(ZSTD_decompressStream(context.get(), &output, &input));
             produced = output.pos;
+            // 累计上限跨帧保持，先减后比较避免 total + produced 溢出。
             if (produced > limits.max_output_bytes - total) {
                 throw std::length_error("Decompressed output exceeds runtime limit");
             }

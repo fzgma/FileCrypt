@@ -138,6 +138,7 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     } else {
         process_stream(input, cipher, output);
     }
+    // Tag 占位不参与 AAD；终结后只回写 Metadata，认证字节与初始构造保持一致。
     const auto final = cipher.finish();
     output.write(std::as_bytes(std::span(final.output)));
     std::transform(final.tag.begin(), final.tag.end(), metadata.tag.begin(),
@@ -174,6 +175,7 @@ std::filesystem::path decrypt(std::istream& input, const std::filesystem::path& 
     const auto metadata = format::deserialize_metadata(header, metadata_bytes);
     if (is_directory && (*metadata.index_length > directory_limits.max_index_bytes || *metadata.index_length == 0))
         throw std::length_error("Directory Index exceeds policy or is empty");
+    // 解密保留磁盘上的原始认证字节，不通过逻辑对象重新序列化 AAD。
     const auto aad = crypto_bytes(format::build_aad(header_bytes, metadata_bytes));
     const auto algorithm = cipher_algorithm(header.algorithm);
     const auto& p = metadata.kdf_parameters;
@@ -182,6 +184,7 @@ std::filesystem::path decrypt(std::istream& input, const std::filesystem::path& 
         format::algorithm_definition(header.algorithm).key_size);
     crypto::CipherContext cipher(algorithm, crypto::Direction::decrypt, key,
         crypto_bytes(metadata.nonce), aad);
+    // update 的明文尚未认证，只能写入权限受限、尚未发布的临时事务。
     io::OutputTransaction output(resolved_destination);
     const auto max_output = is_directory && !(header.flags & compressed_flag)
         ? directory_limits.max_output_bytes : std::numeric_limits<std::uint64_t>::max();

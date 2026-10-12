@@ -5,6 +5,7 @@
 
 using namespace filecrypt::format::v1;
 
+/// 验证 expected 接口的成功结果以及非法输入的错误分类和诊断。
 int main() {
     Header header;
     header.version = 1;

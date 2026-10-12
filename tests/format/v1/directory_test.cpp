@@ -6,22 +6,27 @@
 
 using namespace filecrypt::format::v1;
 namespace {
+/// 检查目录格式测试条件，失败时报告原因。
 void check(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
+/// 验证非法 Index 或名称不能通过格式校验。
 template<class F> void rejects(F action) {
     try { action(); } catch (const std::exception&) { return; }
     throw std::runtime_error("Invalid Index was accepted");
 }
+/// 构造含空目录、空文件及 Unicode 名称的固定树样本。
 std::vector<DirectoryEntry> tree() {
     return {{0, 0xFFFFFFFF, EntryType::directory, 0, 0, "root"},
         {1, 0, EntryType::file, 0, 3, "a.txt"}, {2, 0, EntryType::directory, 0, 0, "empty"},
         {3, 0, EntryType::directory, 0, 0, "sub"}, {4, 3, EntryType::file, 3, 0, "空 🔑"},
         {5, 3, EntryType::file, 3, 2, "b.bin"}};
 }
+/// 验证独立编码向量、UTF-8、父链、连续数据和运行上限。
 void tests() {
     auto entries = tree();
     const auto bytes = serialize_index(entries);
     check(deserialize_index(bytes, 5) == entries, "Index roundtrip mismatch");
     const std::vector<DirectoryEntry> root{{0, 0xFFFFFFFF, EntryType::directory, 0, 0, "r"}};
+    // 固定预期字节独立列出，避免编解码的同类错误被往返测试掩盖。
     const auto root_bytes = serialize_index(root);
     std::vector<std::byte> expected(28);
     std::fill(expected.begin() + 4, expected.begin() + 8, std::byte{255});
@@ -90,6 +95,7 @@ void tests() {
     rejects([&] { (void)deserialize_index(overlong, 0); });
 }
 }
+/// 运行目录格式测试并通过退出码报告结果。
 int main() {
     try { tests(); std::cout << "Directory format tests passed\n"; return 0; }
     catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

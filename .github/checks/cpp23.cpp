@@ -14,12 +14,14 @@
 #include <vector>
 
 #if defined(FILECRYPT_REQUIRE_GCC15) && (!defined(_GLIBCXX_RELEASE) || _GLIBCXX_RELEASE != 15)
-#error "The release probe requires GCC 15 libstdc++ headers"
+    #error "The release probe requires GCC 15 libstdc++ headers"
 #endif
 
 enum class Kind : std::uint16_t { file = 1 };
+/// 模拟 C API 的输出指针分配，验证 out_ptr 能接管对象所有权。
 void allocate(int** value) { *value = new int(42); }
 
+/// 编译并运行发布所需 C++23 特性，失败时以非零退出码停止工具链验证。
 int main() {
     std::vector<int> values{1, 2};
     values.append_range(std::array{3, 4});

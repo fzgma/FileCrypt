@@ -138,6 +138,7 @@ SecureBytes CipherContext::update(std::span<const std::uint8_t> input) {
         SecureBytes output;
         output.reserve(input.size());
         const auto granularity = impl_->mode->update_granularity();
+        // 只暂存不足一个 Botan 更新粒度的尾部，整块处理后立即清空安全缓冲区。
         while (!input.empty()) {
             const auto take = std::min(input.size(), granularity - impl_->pending.size());
             impl_->pending.append_range(input.first(take));
@@ -166,7 +167,8 @@ FinalResult CipherContext::finish(std::span<const std::uint8_t> tag) {
             throw std::invalid_argument("Invalid authentication tag size");
         }
         if (!encrypting) {
-        impl_->pending.append_range(tag);
+            // Botan finish 接受尾部密文与 Tag 拼接的输入，v1 文件中的 Tag 单独存储。
+            impl_->pending.append_range(tag);
         }
         impl_->mode->finish(impl_->pending);
         FinalResult result;

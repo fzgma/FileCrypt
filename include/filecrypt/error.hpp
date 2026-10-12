@@ -12,6 +12,7 @@ struct Error {
     std::string message;
 };
 
+/// 将标准异常分类为统一错误值，同时保留原始诊断信息。
 inline Error error_from_exception(const std::exception& error) {
     if (dynamic_cast<const std::invalid_argument*>(&error)) {
         return {ErrorCode::invalid_argument, error.what()};

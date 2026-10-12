@@ -7,19 +7,19 @@
 #include <stdexcept>
 
 #ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <sddl.h>
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include <sddl.h>
 #else
-#include <cerrno>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
+    #include <cerrno>
+    #include <fcntl.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
 #endif
 
 namespace filecrypt::io {
@@ -185,6 +185,7 @@ void OutputTransaction::seek(std::uint64_t offset) {
 #endif
 }
 
+/// 通过原有句柄查询临时文件的实际长度，不改变读写位置。
 std::uint64_t OutputTransaction::size() const {
     if (impl_->committed) throw std::logic_error("Output already committed");
 #ifdef _WIN32

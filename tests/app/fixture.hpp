@@ -5,6 +5,7 @@
 #include <string>
 
 namespace test_fixture {
+/// 为本轮测试排他创建独立夹具目录，名称碰撞时重试。
 // 加密输出有所有者专属权限，每轮夹具必须独立于其他账户及并发运行。
 inline std::filesystem::path create(const std::filesystem::path& parent) {
     std::filesystem::create_directories(parent);

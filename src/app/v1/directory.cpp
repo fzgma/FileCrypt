@@ -9,15 +9,18 @@
 namespace filecrypt::app::v1 {
 namespace {
 namespace format = filecrypt::format::v1;
+/// 取末级名称的 UTF-8 字节，供排序与 Index 编码使用。
 std::string utf8_name(const std::filesystem::path& path) {
     const auto value = path.filename().u8string();
     return {value.begin(), value.end()};
 }
+/// 计算固定字段、LEB128 名称长度和名称字节的完整编码大小。
 std::uint64_t encoded_entry_size(std::string_view name) {
     std::uint64_t size = 27 + name.size();
     for (auto length = name.size(); length >= 128; length >>= 7) ++size;
     return size;
 }
+/// 从已认证的临时载荷完整读取指定字节，拒绝提前结束。
 void read_exact(io::OutputTransaction& input, std::span<std::byte> bytes) {
     while (!bytes.empty()) {
         const auto size = input.read(bytes);
@@ -27,11 +30,13 @@ void read_exact(io::OutputTransaction& input, std::span<std::byte> bytes) {
 }
 }
 
+/// 按名称排序扫描源树，记录对象快照并在运行上限内构造 Index。
 DirectoryScan scan_directory(const std::filesystem::path& input, const std::filesystem::path& output,
     const directory::Limits& limits) {
     io::validate_source_path(input);
     auto root = std::filesystem::absolute(input).lexically_normal();
     if (root.filename().empty()) root = root.parent_path();
+    // 按实际父目录身份检查输出位置，避免路径别名把输出引回源树。
     auto parent = std::filesystem::weakly_canonical(std::filesystem::absolute(output).parent_path());
     while (!parent.empty()) {
         if (std::filesystem::exists(parent) && std::filesystem::equivalent(parent, root))
@@ -56,6 +61,7 @@ DirectoryScan scan_directory(const std::filesystem::path& input, const std::file
     std::vector<std::uint32_t> depths{0};
     std::uint64_t offset{};
     // 编码器会精确核对 LEB128 大小；扫描过程中也限制增长，避免先无界收集。
+    // 遍历期间向末尾追加子节点；扫描生成的连续 ID 与三个并行数组下标一致。
     for (std::size_t i = 0; i < scan.entries.size(); ++i) {
         if (scan.entries[i].type != format::EntryType::directory) continue;
         const auto path = scan.paths[i];
@@ -100,6 +106,7 @@ DirectoryScan scan_directory(const std::filesystem::path& input, const std::file
     return scan;
 }
 
+/// 复核源对象快照和目录成员集合，拒绝扫描后可观察到的变化。
 void verify_scan(const DirectoryScan& scan) {
     std::set<std::pair<std::uint32_t, std::string_view>> children;
     std::vector<std::size_t> counts(scan.entries.size());
@@ -122,6 +129,7 @@ void verify_scan(const DirectoryScan& scan) {
     }
 }
 
+/// 先输出 Index，再逐文件读取连续数据；文件结束时复核长度与身份。
 std::size_t DirectoryReader::read(std::span<std::byte> bytes) {
     if (bytes.empty()) return 0;
     if (index_position_ < scan_.index.size()) {
@@ -149,6 +157,7 @@ std::size_t DirectoryReader::read(std::span<std::byte> bytes) {
             remaining_ -= count;
             return count;
         }
+        // 读够扫描长度后再探测一个字节，防止文件增长被静默忽略。
         std::byte extra{};
         if (file_->read({&extra, 1}) != 0) throw std::runtime_error("Source file grew during encryption");
         file_->verify_unchanged();
@@ -157,6 +166,7 @@ std::size_t DirectoryReader::read(std::span<std::byte> bytes) {
     return 0;
 }
 
+/// 校验已认证并按需解压的归档，在受限暂存树完整恢复后发布目录。
 void restore_directory(io::OutputTransaction& payload, std::uint64_t index_length,
     const std::filesystem::path& output, const directory::Limits& limits) {
     const auto length = payload.size();
@@ -168,6 +178,7 @@ void restore_directory(io::OutputTransaction& payload, std::uint64_t index_lengt
     const auto entries = format::deserialize_index(std::as_bytes(std::span(index)), length - index_length, limits);
     index.clear();
     for (std::size_t i = 1; i < entries.size(); ++i) io::validate_target_name(entries[i].name);
+    // 解码器已验证 ID 有序、父节点存在；归档 ID 不一定连续，不能直接用作下标。
     auto parent_index = [&](std::uint32_t id) {
         return static_cast<std::size_t>(std::lower_bound(entries.begin(), entries.end(), id,
             [](const auto& entry, auto key) { return entry.id < key; }) - entries.begin());
@@ -208,6 +219,7 @@ void restore_directory(io::OutputTransaction& payload, std::uint64_t index_lengt
         }
         file.commit();
     }
+    // 单文件提交只发生在私有暂存树中，最终目录仍由此处一次性发布。
     tree.commit();
 }
 }

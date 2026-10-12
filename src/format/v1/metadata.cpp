@@ -90,6 +90,7 @@ MetadataLayout metadata_layout(const Header& header, std::uint16_t kdf_id,
     layout.nonce_offset = offset;
     offset += algorithm.nonce_size;
     layout.padding_offset = offset;
+    // 对齐的是字段、Padding 和末尾 Tag 的总长度；Padding 本身只需 0 至 15 字节。
     layout.padding_size = (16 - (offset + algorithm.tag_size) % 16) % 16;
     layout.tag_offset = offset + layout.padding_size;
     layout.metadata_size = layout.tag_offset + algorithm.tag_size;
@@ -173,6 +174,7 @@ Metadata deserialize_metadata(const Header& header, std::span<const std::byte> d
     return metadata;
 }
 
+/// 复用 Metadata 校验与解析，将标准异常转换为统一 expected 错误值。
 std::expected<Metadata, Error> try_deserialize_metadata(const Header& header,
     std::span<const std::byte> data) {
     try {

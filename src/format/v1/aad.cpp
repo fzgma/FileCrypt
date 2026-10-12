@@ -30,6 +30,7 @@ std::vector<std::byte> build_aad(std::span<const std::byte> header_bytes,
     return aad;
 }
 
+/// 从逻辑对象构造 AAD，以 expected 返回标准异常对应的错误值。
 std::expected<std::vector<std::byte>, Error> try_build_aad(const Header& header,
     const Metadata& metadata) {
     try {
@@ -39,6 +40,7 @@ std::expected<std::vector<std::byte>, Error> try_build_aad(const Header& header,
     }
 }
 
+/// 从原始认证字节构造 AAD，以 expected 返回格式校验错误。
 std::expected<std::vector<std::byte>, Error> try_build_aad(
     std::span<const std::byte> header_bytes, std::span<const std::byte> metadata_bytes) {
     try {

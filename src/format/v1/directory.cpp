@@ -1,18 +1,22 @@
 #include <filecrypt/format/v1/directory.hpp>
 #include <algorithm>
 #include <limits>
+#include <ranges>
 #include <set>
 #include <stdexcept>
 #include <utility>
 
 namespace filecrypt::format::v1 {
 namespace {
+/// 条件不成立时报告目录格式或运行上限校验失败。
 void require(bool condition, const char* text) {
     if (!condition) throw std::invalid_argument(text);
 }
+/// 将固定宽度无符号整数逐字节追加为小端字段。
 template<class T> void put(std::vector<std::byte>& out, T value) {
     for (std::size_t i = 0; i < sizeof(T); ++i) out.push_back(static_cast<std::byte>((value >> (8 * i)) & 255));
 }
+/// 检查剩余长度后读取小端字段，并推进解析位置。
 template<class T> T get(std::span<const std::byte> bytes, std::size_t& pos) {
     require(sizeof(T) <= bytes.size() - pos, "Truncated directory Entry");
     std::uint64_t value{};
@@ -21,6 +25,7 @@ template<class T> T get(std::span<const std::byte> bytes, std::size_t& pos) {
 }
 }
 
+/// 校验单组件名称与 UTF-8 编码，拒绝路径穿越、NUL 及非法码点。
 void validate_entry_name(std::string_view name) {
     require(!name.empty() && name != "." && name != ".." && name.find_first_of("/\\") == name.npos,
         "Directory Name must be a nonempty single component");
@@ -40,23 +45,24 @@ void validate_entry_name(std::string_view name) {
             require((next & 0xC0) == 0x80, "Invalid UTF-8 continuation");
             code = (code << 6) | (next & 63);
         }
+        // 最小码点排除过长编码；代理码点与 Unicode 范围外的值均不合法。
         require(code >= minimum && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF),
             "Invalid UTF-8 code point");
     }
 }
 
+/// 校验有序 ID、名称、连续数据及完整父链，返回 File Data 总长度。
 std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const directory::Limits& limits) {
     require(!entries.empty() && entries.size() <= limits.max_entries, "Directory Entry count exceeds policy or is empty");
     require(entries[0].id == 0 && entries[0].parent_id == 0xFFFFFFFF && entries[0].type == EntryType::directory,
         "Invalid directory Root Entry");
     // 所有二分查找都以整个范围有序为前提，必须先验证完整 ID 序列。
-    for (std::size_t i = 1; i < entries.size(); ++i)
-        require(entries[i - 1].id < entries[i].id, "Directory IDs must be unique and increasing");
+    for (const auto [previous, current] : entries | std::views::pairwise)
+        require(previous.id < current.id, "Directory IDs must be unique and increasing");
     std::set<std::pair<std::uint32_t, std::string_view>> names;
     std::vector<std::size_t> parents(entries.size());
     std::uint64_t data_size{}, encoded_size{};
-    for (std::size_t i = 0; i < entries.size(); ++i) {
-        const auto& entry = entries[i];
+    for (const auto [i, entry] : entries | std::views::enumerate) {
         validate_entry_name(entry.name);
         require(entry.name.size() <= limits.max_name_bytes, "Directory Name exceeds policy");
         auto n = entry.name.size();
@@ -87,6 +93,7 @@ std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const dire
     // 迭代遍历父链，允许父节点 ID 晚于子节点，不使用无界递归。
     std::vector<unsigned char> state(entries.size());
     std::vector<std::uint32_t> depths(entries.size());
+    // 0 为未访问，1 为当前父链，2 为已连到 Root；遇到状态 1 即存在环。
     state[0] = 2;
     for (std::size_t i = 1; i < entries.size(); ++i) {
         std::vector<std::size_t> chain;
@@ -109,6 +116,7 @@ std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const dire
     return data_size;
 }
 
+/// 校验后编码 Index，名称长度生成最短 unsigned LEB128 表示。
 std::vector<std::byte> serialize_index(std::span<const DirectoryEntry> entries, const directory::Limits& limits) {
     const auto encoded_size = validate_index(entries, limits);
     std::vector<std::byte> bytes;
@@ -124,6 +132,7 @@ std::vector<std::byte> serialize_index(std::span<const DirectoryEntry> entries, 
     return bytes;
 }
 
+/// 在运行上限内解析 Index，并核对树结构和实际 File Data 长度。
 std::vector<DirectoryEntry> deserialize_index(std::span<const std::byte> bytes, std::uint64_t file_data_length,
     const directory::Limits& limits) {
     require(bytes.size() <= limits.max_index_bytes, "Directory Index exceeds policy");
@@ -145,6 +154,7 @@ std::vector<DirectoryEntry> deserialize_index(std::span<const std::byte> bytes, 
         while (true) {
             require(position < bytes.size() && shift <= 63, "Truncated or overflowing Name Length LEB128");
             const auto value = std::to_integer<unsigned>(bytes[position++]);
+            // 第十个字节最多贡献最高位，且不能继续编码，避免 64 位长度溢出。
             require(shift != 63 || (value & 127) <= 1, "Name Length LEB128 overflow");
             length |= std::uint64_t{value & 127} << shift;
             if (!(value & 128)) break;

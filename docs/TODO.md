@@ -2,17 +2,18 @@
 
 本文件只保留尚未完成的工作及关闭待办所需的验证依据。每完成一个实现、修复或验证步骤，核对代码与测试现状并立即更新；已实现但待验证的事项明确标注验证范围，收到对应结果后再关闭。已完成模块及使用说明见 [README](../README.md)、[目录实现](DIRECTORY_IMPLEMENTATION.md)与[测试素材说明](../tests/fixtures/README.md)。
 
-## 当前：C++23 生产代码迁移
+## 当前：C++23 小范围改写验证
 
-- **标准库现代化：** 完成协议数据转换、容器操作、排序、字符串查找及目录索引优化，保持原有协议行为不变。 **已完成**
-- **CLI 输出迁移：** 统一使用 `std::print` / `std::println`；MinGW/UCRT 需额外链接 `stdc++exp`，Linux GCC 15 与 MSVC 无此依赖。**已完成**
-- **`std::expected` 试点：** 新增统一错误类型及 Header、Metadata、AAD 的 `try_*` API，保留原有异常接口，并补充相关测试。**已完成**
-- **CLI 选项解析：**使用静态 `OptionSpec`、`OptionId` 分派和 C++23 `ranges::find_if` 重写 `crypt_file`，保持选项、别名、适用命令和错误行为兼容。**已完成**
-- **本地验证：**通过**。
-- **待办：** 当前代码改动等待远端 MSVC/Linux GitHub Actions 验证；通过后关闭本轮迁移验证项。
+- 目录 Index 校验已使用 `views::pairwise` 检查相邻 ID、`views::enumerate` 遍历索引与 Entry，保持校验顺序和协议行为。
+- Windows CLI 的 UTF-16 → UTF-8 参数转换已试点 `string::resize_and_overwrite`；回调不抛异常，转换失败在回调结束后报告，Linux 不编译此分支。
+- 本地 MinGW `build_all` 通过；源码可读性整理后的沙箱外 CTest 全量 15/15 通过，包含 Unicode 路径、重定向输出和隐藏控制台测试。
+- 待远端 MSVC/Linux Actions 验证后关闭本项；本机无 MSVC/Linux 构建环境。
 
-全程保持协议字节布局、认证边界、字段宽度、排序顺序及流式缓冲边界不变。
+## 当前：源码可读性整理
 
+- 已检查 `src`、`include`、`tests` 与 `.github/checks` 的全部 52 个 C++ 源码和头文件；沿用 `///` 函数职责注释，对目录树、认证顺序、资源边界、平台句柄与事务清理等复杂逻辑补充 `//` 说明。
+- 条件编译指令按嵌套层级使用四空格缩进，参考 `src/cli/main.cpp`；保留原有条件和包含顺序。
+- 本轮修改前后全部 52 个文件的代码 token 一致，仅改注释与排版；其中 29 个文件有可读性改动。本地 MinGW `build_all` 和沙箱外 CTest 全量 15/15 通过，远端 MSVC/Linux Actions 待验证。
 
 ## 后续：运行策略
 
@@ -23,5 +24,5 @@
 
 ## 跨平台与工程完善
 
-- 补齐 MSVC 环境诊断与符号链接夹具跳过报告；配置本地独立 MSVC 构建，并覆盖 Unicode 测试根路径。
+- 补齐 MSVC 环境诊断与符号链接夹具跳过报告，并覆盖 Unicode 测试根路径。本机无 MSVC，当前以 Actions 验证为准，本地独立 MSVC 构建暂缓。
 - 完善 CLI 错误分类、用户帮助与发布说明。

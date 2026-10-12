@@ -123,6 +123,7 @@ CLI 将 `aes`、`xchacha` 等名称转换为应用层选项，重复或冲突选
 v1 应用层的 `file_type.cpp` 根据文件名选择登记扩展名，无后缀才使用 512-byte 有界 magic 检测，检测后恢复同一输入流位置；Format Registry 只提供编号映射。
 CLI 解密请求恢复扩展名，v1 流程从同一次读取的 Header 计算实际目标，认证及解压成功后才提交。公共 `decrypt_file` 返回实际输出路径，默认保持调用者提供的路径；最后一个 `restore_extension` 参数为 true 时启用无后缀路径补全，CLI 据返回值显示结果。
 Windows CLI 使用 `wmain` 接收原生 UTF-16 参数，严格转换为 UTF-8 后统一解析，路径由 UTF-8 显式构造；
+参数转换通过 `string::resize_and_overwrite` 填充普通字符串，回调不抛异常，转换失败在回调结束后报告；密码仍使用安全容器。
 MinGW 链接时启用 `-municode`。真实控制台输出临时切换为 UTF-8 代码页，刷新后恢复原值；重定向输出保持 UTF-8 字节。
 
 主要职责：

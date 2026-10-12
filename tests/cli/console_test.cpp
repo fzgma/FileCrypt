@@ -1,8 +1,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
 #endif
 #ifndef NOMINMAX
-#define NOMINMAX
+    #define NOMINMAX
 #endif
 #include <windows.h>
 #include <iostream>
@@ -12,6 +12,7 @@
 #include <string>
 
 namespace {
+/// 启动并等待控制台测试子进程，可创建隐藏控制台，超时则终止。
 // 测试路径由 CMake 提供，不包含引号；保留 Unicode 与空格。
 DWORD run_process(std::wstring command, DWORD flags = 0, bool hidden = false) {
     STARTUPINFOW startup{};
@@ -38,6 +39,7 @@ DWORD run_process(std::wstring command, DWORD flags = 0, bool hidden = false) {
     return result;
 }
 
+/// 在非 UTF-8 控制台验证中文输出、退出码及执行后的代码页恢复。
 void verify_console(const std::wstring& executable, const wchar_t* arguments,
         DWORD expected_exit, const wchar_t* expected_text) {
     const auto output = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -75,6 +77,7 @@ void verify_console(const std::wstring& executable, const wchar_t* arguments,
 }
 }
 
+/// 主进程创建隐藏控制台，worker 执行检查并将失败诊断写回日志。
 int wmain(int argc, wchar_t** argv) {
     try {
         if (argc == 4 && std::wstring(argv[1]) == L"--worker") {

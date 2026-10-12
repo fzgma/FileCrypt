@@ -10,6 +10,7 @@ namespace {
 namespace format = filecrypt::format::v1;
 using namespace std::string_view_literals;
 
+/// 仅折叠 ASCII 大写字母，保留其余 UTF-8 字节。
 std::string lower_ascii(const std::u8string& text) {
     std::string result(text.begin(), text.end());
     for (auto& value : result) {
@@ -18,14 +19,16 @@ std::string lower_ascii(const std::u8string& text) {
     return result;
 }
 
+/// 在给定偏移有界匹配文件签名，不读取输入范围外的字节。
 bool match(std::string_view data, std::size_t offset, std::string_view signature) {
     return offset <= data.size() && data.substr(offset).starts_with(signature);
 }
 
-// 仅解析有界 EBML Header 中的 DocType，避免把 WebM 等也当作 Matroska。
+/// 仅解析有界 EBML Header 中的 DocType，避免把 WebM 等也当作 Matroska。
 bool matroska_header(std::string_view data) {
     if (!match(data, 0, "\x1a\x45\xdf\xa3"sv)) return false;
     std::size_t position = 4;
+    // ID 保留长度标志位，数据长度移除标志位；二者允许的最大编码宽度不同。
     auto vint = [&](bool id, std::uint64_t& value) {
         if (position >= data.size()) return false;
         const auto first = static_cast<unsigned char>(data[position]);
@@ -53,6 +56,7 @@ bool matroska_header(std::string_view data) {
     return false;
 }
 
+/// 从至多 512 字节的文件头返回已识别后缀；不验证完整文件内容。
 std::string_view magic_extension(std::string_view data) {
     if (match(data, 0, "\x89PNG\r\n\x1a\n"sv)) return "png";
     if (match(data, 0, "\xff\xd8\xff"sv)) return "jpg";
@@ -75,6 +79,7 @@ std::string_view magic_extension(std::string_view data) {
         if (match(data, 8, "WAVE")) return "wav";
         if (match(data, 8, "AVI ")) return "avi";
     }
+    // 只接受已知 major brand，不把 AVIF 等其他 ISO BMFF 类型误报为 MP4。
     if (data.size() >= 16 && match(data, 4, "ftyp")) {
         const auto brand = data.substr(8, 4);
         if (brand == "qt  ") return "mov";
@@ -103,6 +108,7 @@ std::string_view magic_extension(std::string_view data) {
 }
 }
 
+/// 优先匹配最长登记后缀，无后缀时检测有界 magic 并恢复输入流位置。
 std::uint16_t detect_file_type(const std::filesystem::path& path, std::istream& input) {
     const auto filename = lower_ascii(path.filename().u8string());
     const format::FileTypeDefinition* longest = nullptr;
@@ -124,6 +130,7 @@ std::uint16_t detect_file_type(const std::filesystem::path& path, std::istream& 
     input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
     const auto count = input.gcount();
     if (input.bad() || (input.fail() && !input.eof())) throw std::runtime_error("Magic detection read failed");
+    // 短文件的头部读取会设置 EOF；先清除状态，再恢复位置供真正加密读取。
     input.clear();
     input.seekg(position);
     if (!input) throw std::runtime_error("Cannot restore input after magic detection");
@@ -131,6 +138,7 @@ std::uint16_t detect_file_type(const std::filesystem::path& path, std::istream& 
         static_cast<std::size_t>(count)}));
 }
 
+/// 仅为无后缀文件名追加登记扩展名，保留调用者显式指定的后缀。
 std::filesystem::path restore_file_extension(std::filesystem::path path, std::uint16_t type) {
     const auto extension = format::file_type_definition(type).extension;
     if (!extension.empty() && path.has_filename() && !path.has_extension() &&

@@ -58,6 +58,7 @@ Header deserialize(std::span<const std::byte> data) {
     return header;
 }
 
+/// 复用 Header 解析，将标准异常转换为统一 expected 错误值。
 std::expected<Header, Error> try_deserialize(std::span<const std::byte> data) {
     try {
         return deserialize(data);

@@ -19,7 +19,7 @@
 
 - 固定字段显式小端编码，Name Length 使用 unsigned LEB128；Index 结束由外层 Metadata 的 Index Length 指定。
 - ID 唯一且按升序排列，Root 固定 ID 0、Parent 0xFFFFFFFF、Type Directory；普通 ID 保持协议定义的 uint32 范围。
-- 在任何父 ID 二分查找之前先核对完整 ID 序列，避免对不可信无序范围执行要求有序的算法。
+- 在任何父 ID 二分查找之前先通过 `views::pairwise` 核对完整 ID 序列，再用 `views::enumerate` 遍历索引与 Entry，避免对不可信无序范围执行要求有序的算法。
 - 不要求普通 ID 连续，也不要求父 ID 小于子 ID；父节点必须存在且为目录，所有节点必须连到 Root，禁止环。
 - Name 为非空、合法 UTF-8 单组件，禁止 NUL、分隔符、`.` 和 `..`，拒绝过长编码、代理码点及无效码点；同一父节点下按原始字节检查重名。
 - Directory 的 Offset/Length 必须为零。File Data 按 ID 严格连续，检查累计长度溢出，并与实际载荷长度精确比较，拒绝空洞、重叠、截断和未引用尾部。

@@ -24,10 +24,12 @@ constexpr FileTypeDefinition not_applicable{0, ""};
 constexpr FileTypeDefinition unknown{unknown_file_type, ""};
 }
 
+/// 返回登记扩展名的只读表，不包含 N/A 和 Unknown 特殊值。
 std::span<const FileTypeDefinition> file_type_definitions() {
     return file_types;
 }
 
+/// 查询类型编号，支持 N/A 与 Unknown，拒绝未分配和非法编号。
 const FileTypeDefinition& file_type_definition(std::uint16_t id) {
     if (id == 0) return not_applicable;
     if (id == unknown_file_type) return unknown;
@@ -37,6 +39,7 @@ const FileTypeDefinition& file_type_definition(std::uint16_t id) {
     throw std::invalid_argument("Unsupported or invalid v1 file type ID");
 }
 
+/// 查询不含点的小写后缀，未登记时返回 Unknown 编号。
 std::uint16_t file_type_id(std::string_view extension) {
     for (const auto& type : file_types) {
         if (type.extension == extension) return type.id;
