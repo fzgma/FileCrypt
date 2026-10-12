@@ -14,7 +14,7 @@ MSVC 编译启用 `/EHsc` 和 `/utf-8`，将缺少异常展开语义的警告视
 
 MSVC 使用 GitHub Actions Cache 保存独立目录中的 vcpkg 二进制包，通过 `VCPKG_BINARY_SOURCES` 配置文件缓存的读写。恢复前缀包含 Windows 构建环境、vcpkg checkout 版本和 Release triplet 内容哈希；vcpkg 根据包 ABI 检查决定能否复用，工具链或依赖变化时重编译受影响的包。
 
-依赖安装成功且新增二进制包后立即保存缓存，保存位于项目构建与测试之前，后续测试失败也能复用依赖。保存键包含运行编号和重跑次数，允许补充新的 ABI 包；全部复用时不重复保存。默认分支建立的缓存可供后续标签运行读取，实际命中与失效验证进度见 [TODO](TODO.md)。
+依赖安装成功且新增二进制包后立即保存缓存，保存位于项目构建与测试之前，后续测试失败也能复用依赖。保存键包含运行编号和重跑次数，允许补充新的 ABI 包；全部复用时不重复保存。默认分支建立的缓存可供后续标签运行读取。本轮缓存验证已由用户确认完成。
 
 ## 验证与分发
 
@@ -32,4 +32,4 @@ CLI 与目录流程同时覆盖中文、空格、emoji 路径、Windows 名称�
 
 推送 `v*` 标签触发[发布工作流](../.github/workflows/release.yml)。发布阶段从同次运行下载 Windows Artifact，将正式程序命名为 `filecrypt-windows-x86_64.exe`，纳入 `SHA256SUMS` 并上传 GitHub Release。发布工作流要求全部构建验证任务成功，任一失败均不发布。
 
-v0.2.0 的 MSVC Actions 验证已由用户确认成功。当前目录功能、路径修复和缓存的远端验证进度见 [TODO](TODO.md)；本地 MinGW 测试结果不替代 MSVC 验证。
+本轮目录素材、路径修复及缓存的 MSVC Actions 验证已由用户确认完成。后续改动的验证待办见 [TODO](TODO.md)；本地 MinGW 测试结果不替代 MSVC 验证。

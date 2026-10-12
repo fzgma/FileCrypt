@@ -35,6 +35,8 @@ Linux 构建后执行 7 项单元测试、3 项正式程序冒烟测试和 3 项
 冒烟测试直接调用正式可执行文件，验证格式生成与读取、两种算法的压缩及无压缩加解密、密码错误和已有输出保护；
 CLI 测试同时覆盖中文、空格及 emoji 路径和重定向 UTF-8 输出。
 CTest 单元测试使用 `unit` 标签，所有集成测试使用 `integration` 标签，冒烟测试额外使用 `smoke` 标签，素材测试额外使用 `corpus` 标签。构建流程通过 `-L integration -LE smoke` 选择 3 项非冒烟集成测试。
+
+测试命令、标签和超时统一在 [tests/register_tests.cmake](../tests/register_tests.cmake) 注册，常规构建与发行版复验共用。复验脚本配置 [tests/runtime](../tests/runtime/CMakeLists.txt) 的无编译器 CMake 项目，引用同一批已编译程序，再通过 CTest 执行全部测试；不重新编译、不维护第二份测试名称清单。每个发行版使用独立的测试配置和夹具目录。CPU 基线复验通过 QEMU 前缀运行单元/API 测试，并用 CLI 包装脚本确保子进程也使用 `qemu64`。
 Linux 随后审计正式程序和测试程序的 ELF：
 
 - ELF64、x86-64，使用 `/lib64/ld-linux-x86-64.so.2` 动态加载器。
@@ -65,7 +67,7 @@ Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即�
 
 工作流使用 checkout v7.0.1、upload-artifact v7.0.2、download-artifact v8.0.1，均使用 Node 24。上传显式设置 `archive: true` 保留命名 ZIP Artifact，下载使用默认解压和摘要校验，只从同次运行获取产物。
 
-v0.2.0 的 Linux Actions 验证已由用户确认成功。本阶段目录功能、发行版矩阵及 CPU 模拟的远端验证进度见 [TODO](TODO.md)。
+本轮目录素材、UTF-8 locale、发行版矩阵及 CPU 模拟验证已由用户确认完成。后续改动的验证待办见 [TODO](TODO.md)。
 
 ## 参考资料
 

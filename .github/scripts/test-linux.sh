@@ -29,15 +29,10 @@ exec qemu-x86_64 -cpu qemu64 "$FILECRYPT_TEST_BINARY" "$@"
 EOF
     chmod +x "$filecrypt"
 fi
-echo '运行单元测试'
-for test in header metadata aad detect crypto compression directory; do
-    "${runner[@]}" "build/tests/unit/${test}_test"
-done
-echo '运行正式程序冒烟测试：格式信息及两种算法的压缩和无压缩加解密'
-cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/info" -P tests/cli/info_test.cmake
-cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/crypt" -P tests/cli/crypt_test.cmake
-cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/cli-directory" -P tests/cli/directory_test.cmake
-cmake "-DFILECRYPT=$filecrypt" "-DTEST_DIR=$test_root/corpus" -P tests/cli/corpus_test.cmake
-echo '运行文件流程集成测试'
-"${runner[@]}" build/tests/integration/file_crypt_test "$test_root/app"
-"${runner[@]}" build/tests/integration/directory_crypt_test "$test_root/directory"
+# Register tests without compiling; use the same definitions as the build.
+test_runner=$(IFS=';'; echo "${runner[*]}")
+# 复验只配置测试；无需在最小发行版容器中安装 make 或 Ninja。
+cmake -S tests/runtime -B "$test_root" -G "Unix Makefiles" -DCMAKE_MAKE_PROGRAM=/bin/true \
+    "-DFILECRYPT_BUILD_DIR=$PWD/build" "-DFILECRYPT_CLI=$filecrypt" \
+    "-DFILECRYPT_TEST_RUNNER=$test_runner"
+ctest --test-dir "$test_root" --output-on-failure --no-tests=error
