@@ -25,8 +25,8 @@ std::vector<std::byte> build_aad(std::span<const std::byte> header_bytes,
     const auto authenticated_metadata = metadata_bytes.first(layout.tag_offset);
     std::vector<std::byte> aad;
     aad.reserve(header_size + authenticated_metadata.size());
-    aad.insert(aad.end(), header_bytes.begin(), header_bytes.end());
-    aad.insert(aad.end(), authenticated_metadata.begin(), authenticated_metadata.end());
+    aad.append_range(header_bytes);
+    aad.append_range(authenticated_metadata);
     return aad;
 }
 } // namespace filecrypt::format::v1

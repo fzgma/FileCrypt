@@ -3,6 +3,7 @@
 #include <limits>
 #include <set>
 #include <stdexcept>
+#include <utility>
 
 namespace filecrypt::format::v1 {
 namespace {
@@ -112,7 +113,7 @@ std::vector<std::byte> serialize_index(std::span<const DirectoryEntry> entries, 
     (void)validate_index(entries, limits);
     std::vector<std::byte> bytes;
     for (const auto& entry : entries) {
-        put(bytes, entry.id); put(bytes, entry.parent_id); put(bytes, static_cast<std::uint16_t>(entry.type));
+        put(bytes, entry.id); put(bytes, entry.parent_id); put(bytes, std::to_underlying(entry.type));
         put(bytes, entry.data_offset); put(bytes, entry.data_length);
         auto length = static_cast<std::uint64_t>(entry.name.size());
         do { const auto value = length & 127; length >>= 7; bytes.push_back(static_cast<std::byte>(value | (length ? 128 : 0))); } while (length);

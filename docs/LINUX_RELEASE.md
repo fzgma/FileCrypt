@@ -10,7 +10,7 @@ EOL 系统不承诺兼容，也不纳入正式测试矩阵。这是支持政策�
 ## 构建与链接
 
 - 使用仍在维护的 AlmaLinux 8 系 `quay.io/pypa/manylinux_2_28_x86_64` 构建，发布产物所需 glibc 符号不得高于 2.34。
-- `cpp23perview` 分支在该底座内安装 GCC Toolset 15，通过 `/opt/rh/gcc-toolset-15/root/usr` 显式选择编译器及归档工具；gcc/g++ 主版本必须为 15，静态运行库必须来自该 Toolset，实际 RPM 版本记录在日志。此迁移待 Actions 验证。
+- 在该底座内安装 GCC Toolset 15，通过 `/opt/rh/gcc-toolset-15/root/usr` 显式选择编译器及归档工具；gcc/g++ 主版本必须为 15，静态运行库必须来自该 Toolset，实际 RPM 版本记录在日志。2026-10-12 用户确认提交 7f96ba4 的 Actions 全部通过，完成 GCC 15.2.1 工具链、C++23 预检、全量构建、ELF 审计及发行版/CPU 矩阵验证。
 - 程序和 Botan 均显式使用 `-march=x86-64 -mtune=generic`，不使用 `-march=native`。
 - Botan 3.13.0 从官方源码构建静态库，校验固定 SHA-256；不使用发行版预编译的 Botan。
 - Zstandard 1.5.7 同样从官方源码构建静态库并校验固定 SHA-256，使用通用 x86-64 编译选项。
