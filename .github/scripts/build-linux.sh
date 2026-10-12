@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-# 在不预设 v2 指令集的 manylinux_2_28 中构建通用 x86-64 发布版及全部测试。
+# 在 manylinux_2_28 中使用 GCC Toolset 15 构建通用 x86-64 发布版及全部测试。
 set -euo pipefail
 source "${BASH_SOURCE[0]%/*}/utf8-locale.sh"
 
 export PATH="/opt/python/cp312-cp312/bin:$PATH"
+source .github/scripts/setup-gcc15.sh
 python -m pip install --disable-pip-version-check cmake==3.31.6 ninja==1.11.1.3
+
+mkdir -p build/toolchain
+"$CXX" -std=c++23 -DFILECRYPT_REQUIRE_GCC15=1 -O2 -march=x86-64 -mtune=generic \
+    -static-libstdc++ -static-libgcc .github/checks/cpp23.cpp \
+    -o build/toolchain/cpp23-probe
+build/toolchain/cpp23-probe
+python .github/scripts/check-linux-elf.py build/toolchain/cpp23-probe
 
 botan_version=3.13.0
 botan_sha256=12f5a8358890bbee82edfe9d2e7769b0a610b6dd0e0698aea13d20a675d84620
@@ -20,7 +28,7 @@ botan_prefix="$PWD/build/deps/botan-install"
 (
     cd "$botan_source"
     python configure.py --prefix="$botan_prefix" --libdir=lib \
-        --cc=gcc --cpu=x86_64 --os=linux --build-targets=static \
+        --cc=gcc --cc-bin="$CXX" --cpu=x86_64 --os=linux --build-targets=static \
         --extra-cxxflags="-march=x86-64 -mtune=generic" \
         --minimized-build \
         --enable-modules=aes,gcm,chacha20poly1305,argon2,auto_rng,system_rng,entropy,locking_allocator,cpuid,aes_ni,ghash_cpu,chacha_simd32,argon2_avx2
@@ -36,7 +44,10 @@ curl --fail --location --retry 3 \
 echo "$zstd_sha256  build/deps/zstd.tar.gz" | sha256sum --check
 tar -xf build/deps/zstd.tar.gz -C build/deps
 zstd_prefix="$PWD/build/deps/zstd-install"
-cmake -S "build/deps/zstd-$zstd_version/build/cmake" -B build/deps/zstd-build -G Ninja \
+cmake --fresh -S "build/deps/zstd-$zstd_version/build/cmake" -B build/deps/zstd-build -G Ninja \
+    "-DCMAKE_C_COMPILER=$CC" "-DCMAKE_CXX_COMPILER=$CXX" \
+    "-DCMAKE_AR=$AR" "-DCMAKE_RANLIB=$RANLIB" \
+    -DCMAKE_C_STANDARD=17 -DCMAKE_C_STANDARD_REQUIRED=ON \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$zstd_prefix" -DCMAKE_INSTALL_LIBDIR=lib \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON '-DCMAKE_C_FLAGS=-march=x86-64 -mtune=generic' \
     -DZSTD_BUILD_SHARED=OFF -DZSTD_BUILD_STATIC=ON -DZSTD_BUILD_PROGRAMS=OFF \
@@ -44,7 +55,8 @@ cmake -S "build/deps/zstd-$zstd_version/build/cmake" -B build/deps/zstd-build -G
 cmake --build build/deps/zstd-build --parallel 2
 cmake --install build/deps/zstd-build
 export PKG_CONFIG_PATH="$botan_prefix/lib/pkgconfig:$zstd_prefix/lib/pkgconfig"
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+cmake --fresh -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+    "-DCMAKE_CXX_COMPILER=$CXX" "-DCMAKE_AR=$AR" "-DCMAKE_RANLIB=$RANLIB" \
     "-DCMAKE_PREFIX_PATH=$botan_prefix;$zstd_prefix" -DBotan_USE_STATIC_LIBS=ON -DZstd_USE_STATIC_LIBS=ON \
     '-DCMAKE_CXX_FLAGS=-march=x86-64 -mtune=generic' \
     '-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc'
@@ -54,13 +66,15 @@ ctest --test-dir build -L smoke --output-on-failure
 ctest --test-dir build -L integration -LE smoke --output-on-failure
 
 # 所有测试程序也必须能够在没有 Botan 和 C++ 共享运行库的目标容器中执行。
-python .github/scripts/check-linux-elf.py build/filecrypt build/tests/unit/* build/tests/integration/*
+python .github/scripts/check-linux-elf.py build/filecrypt build/toolchain/cpp23-probe build/tests/unit/* build/tests/integration/*
 # 构建信息留在 Actions 日志，最终 Artifact 只上传 build/filecrypt。
 {
     echo "commit=$GITHUB_SHA"
     echo "run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
     cat /etc/os-release
-    g++ --version
+    "$CXX" --version
+    echo "CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB"
+    echo 'Zstandard C standard=C17; FileCrypt C++ standard=C++23'
     getconf GNU_LIBC_VERSION
     echo "Botan=$botan_version SHA256=$botan_sha256"
     echo "Zstandard=$zstd_version SHA256=$zstd_sha256"

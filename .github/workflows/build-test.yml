@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   linux:
-    name: Linux / x86-64 / glibc 2.34
+    name: Linux / GCC 15 / x86-64 / glibc 2.34
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

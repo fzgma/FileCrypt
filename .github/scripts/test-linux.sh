@@ -29,6 +29,8 @@ exec qemu-x86_64 -cpu qemu64 "$FILECRYPT_TEST_BINARY" "$@"
 EOF
     chmod +x "$filecrypt"
 fi
+# C++23 工具链预检也必须通过本发行版/CPU 路径，复用同一个已编译程序。
+"${runner[@]}" build/toolchain/cpp23-probe
 # Register tests without compiling; use the same definitions as the build.
 test_runner=$(IFS=';'; echo "${runner[*]}")
 # 复验只配置测试；无需在最小发行版容器中安装 make 或 Ninja。

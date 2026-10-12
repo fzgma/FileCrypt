@@ -10,6 +10,7 @@ EOL 系统不承诺兼容，也不纳入正式测试矩阵。这是支持政策�
 ## 构建与链接
 
 - 使用仍在维护的 AlmaLinux 8 系 `quay.io/pypa/manylinux_2_28_x86_64` 构建，发布产物所需 glibc 符号不得高于 2.34。
+- `cpp23perview` 分支在该底座内安装 GCC Toolset 15，通过 `/opt/rh/gcc-toolset-15/root/usr` 显式选择编译器及归档工具；gcc/g++ 主版本必须为 15，静态运行库必须来自该 Toolset，实际 RPM 版本记录在日志。此迁移待 Actions 验证。
 - 程序和 Botan 均显式使用 `-march=x86-64 -mtune=generic`，不使用 `-march=native`。
 - Botan 3.13.0 从官方源码构建静态库，校验固定 SHA-256；不使用发行版预编译的 Botan。
 - Zstandard 1.5.7 同样从官方源码构建静态库并校验固定 SHA-256，使用通用 x86-64 编译选项。
@@ -19,6 +20,10 @@ EOL 系统不承诺兼容，也不纳入正式测试矩阵。这是支持政策�
 Linux 构建脚本为 [.github/scripts/build-linux.sh](../.github/scripts/build-linux.sh)。
 `Botan_USE_STATIC_LIBS=ON` 要求通过 `PKG_CONFIG_PATH` 指向同一 Botan 安装前缀的
 `botan-3.pc`，以读取静态传递依赖；普通开发构建默认仍查找共享库。
+
+Botan 显式使用 GCC 15 的 g++，Zstandard 与主程序的 CMake 显式设置编译器和归档工具，并重新初始化编译器缓存。Zstandard 固定 C17，避免工具链升级同时改变依赖的 C 语言版本。
+
+依赖构建前编译并运行独立 C++23 预检，覆盖 print/format、append_range、ranges::to、enumerate/zip、expected/optional、byteswap/to_underlying/contains 及 out_ptr；使用通用 x86-64 和静态 C++/GCC 运行库。Linux 预检不额外链接 stdc++exp，也不要求安装该实验库；实际功能的编译、链接与运行仍须全部通过。预检程序纳入 ELF 审计，并在每个发行版和 qemu64 路径执行，不进入正式 Artifact。功能或运行库检查失败时停止，不回退到旧 GCC。
 
 manylinux 的兼容承诺针对 Python wheel，本项目借用其构建环境，不将其视为 ELF 兼容认证。
 构建环境低于项目支持下限是有意选择：RHEL 9 系预编译库（包括静态 C++ 运行库）可能以
