@@ -47,13 +47,14 @@ FileCrypt 支持 **文件与目录加解密、可选 Zstandard 压缩、公开�
 
 ### Linux
 
-下载 Linux 程序后赋予执行权限：
+下载 Linux 程序后：
 
 ```bash
-chmod +x filecrypt-linux-x86_64
-./filecrypt-linux-x86_64 -e photo.png backup
-./filecrypt-linux-x86_64 -d backup restored
-./filecrypt-linux-x86_64 -h
+mv filecrypt-linux-x86_64 filecrypt
+chmod +x filecrypt
+./filecrypt -e photo.png backup
+./filecrypt -d backup restored
+./filecrypt -h
 ```
 
 Linux 发布目标为 x86-64、glibc 2.34+；正式支持仍在维护的发行版，暂不支持 Alpine/musl。
@@ -207,6 +208,8 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 * magic 检测只提供后缀提示，不校验完整内容；未命中的无后缀文件记 `Unknown`。
 * 压缩解密和目录恢复需要额外临时磁盘空间；错误密码、结构异常、资源超限、平台非法名称或目标名称冲突均不发布最终目录。
 * Windows 名称限制、文件系统大小写及路径长度限制可能使跨平台恢复失败；不会自动改名。
+* Windows 下曾偶发出现“拒绝访问”错误，具体原因尚未确定，目前无法稳定复现。
+如遇到此问题，请检查文件及目录的访问权限，并确认相关文件未被其他程序以冲突的方式占用；排除上述情况后可重试。
 * v1 使用单条 AEAD 消息，载荷受所选算法的消息长度上限约束。
 * 不接受命令行明文密码；管道密码输入需使用 UTF-8。
 
@@ -220,6 +223,7 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 * [目录格式](docs/DIRECTORY_FORMAT.md)
 * [目录实现与运行策略](docs/DIRECTORY_IMPLEMENTATION.md)
 * [项目架构](docs/ARCHITECTURE.md)
+* [错误语义与 expected 试点评估](docs/ERROR_HANDLING.md)
 * [Linux 发布政策](docs/LINUX_RELEASE.md)
 * [Windows MSVC 发布](docs/MSVC_RELEASE.md)
 * [开发进度与待办](docs/TODO.md)

@@ -10,20 +10,36 @@
 namespace filecrypt::app {
 /// 读取最小识别前缀后分发到对应版本的公开信息流程。
 FileInfo inspect_file(const std::filesystem::path& path) {
+    // 空路径是请求参数错误；仍使用 runtime_error 子类兼容原打开失败的捕获约定。
+    if (path.empty()) throw OperationError(ErrorCode::invalid_argument, "输入文件路径不能为空");
     std::ifstream input(path, std::ios::binary);
     if (!input) {
-        throw std::runtime_error("Cannot open input file");
+        throw OperationError(ErrorCode::io_error, "无法打开输入文件");
     }
     std::array<std::byte, format::identification_size> prefix{};
-    io::read_exact(input, prefix);
+    try { io::read_exact(input, prefix); }
+    catch (const io::UnexpectedEndOfInput& error) {
+        throw OperationError(ErrorCode::invalid_format, error.what());
+    }
     const auto version = format::detect_version(prefix);
     input.seekg(0);
     if (!input) {
-        throw std::runtime_error("Cannot seek input file");
+        throw OperationError(ErrorCode::io_error, "无法定位输入文件");
     }
     switch (version) {
     case 1: return v1::inspect(input);
-    default: throw std::invalid_argument("Unsupported FileCrypt version");
+    default: throw FormatError("不支持的 FileCrypt 格式版本", ErrorCode::unsupported_format);
+    }
+}
+
+/// 将已分类的信息读取失败返回给调用者，保留原实现与其他异常的传播。
+std::expected<FileInfo, Error> try_inspect_file(const std::filesystem::path& path) {
+    try {
+        return inspect_file(path);
+    } catch (const FormatError& error) {
+        return std::unexpected(error_from_exception(error));
+    } catch (const OperationError& error) {
+        return std::unexpected(error_from_exception(error));
     }
 }
 

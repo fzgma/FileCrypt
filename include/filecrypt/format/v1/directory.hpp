@@ -16,6 +16,7 @@ struct DirectoryEntry {
     std::uint64_t data_offset{};
     std::uint64_t data_length{};
     std::string name;
+    /// 比较 Entry 的标识、树关系、数据范围与名称。
     bool operator==(const DirectoryEntry&) const = default;
 };
 /// 校验合法 UTF-8 单路径组件，不施加目标平台名称规则。

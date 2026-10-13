@@ -1,4 +1,5 @@
 #include <filecrypt/format/v1/registry.hpp>
+#include <filecrypt/error.hpp>
 
 #include <stdexcept>
 
@@ -24,19 +25,23 @@ constexpr FileTypeDefinition not_applicable{0, ""};
 constexpr FileTypeDefinition unknown{unknown_file_type, ""};
 }
 
+/// 返回登记扩展名的只读表，不包含 N/A 和 Unknown 特殊值。
 std::span<const FileTypeDefinition> file_type_definitions() {
     return file_types;
 }
 
+/// 查询类型编号，支持 N/A 与 Unknown，拒绝未分配和非法编号。
 const FileTypeDefinition& file_type_definition(std::uint16_t id) {
     if (id == 0) return not_applicable;
     if (id == unknown_file_type) return unknown;
     for (const auto& type : file_types) {
         if (type.id == id) return type;
     }
-    throw std::invalid_argument("Unsupported or invalid v1 file type ID");
+    if (id == 0xFFFF) throw FormatError("v1 文件类型编号无效");
+    throw FormatError("不支持的 v1 文件类型编号", ErrorCode::unsupported_format);
 }
 
+/// 查询不含点的小写后缀，未登记时返回 Unknown 编号。
 std::uint16_t file_type_id(std::string_view extension) {
     for (const auto& type : file_types) {
         if (type.extension == extension) return type.id;
@@ -49,14 +54,14 @@ const AlgorithmDefinition& algorithm_definition(std::uint16_t id) {
     switch (id) {
     case 1: return aes;
     case 2: return xchacha;
-    default: throw std::invalid_argument("Unsupported v1 algorithm ID");
+    default: throw FormatError("不支持的 v1 加密算法编号", ErrorCode::unsupported_format);
     }
 }
 
 /// 根据协议编号返回 v1 KDF 的固定定义。
 const KdfDefinition& kdf_definition(std::uint16_t id) {
     if (id != argon2id.id) {
-        throw std::invalid_argument("Unsupported v1 KDF ID");
+        throw FormatError("不支持的 v1 密钥派生算法编号", ErrorCode::unsupported_format);
     }
     return argon2id;
 }
@@ -64,7 +69,7 @@ const KdfDefinition& kdf_definition(std::uint16_t id) {
 /// 根据协议编号返回 v1 压缩算法的固定定义。
 const CompressionDefinition& compression_definition(std::uint16_t id) {
     if (id != zstandard.id) {
-        throw std::invalid_argument("Unsupported v1 compression ID");
+        throw FormatError("不支持的 v1 压缩算法编号", ErrorCode::unsupported_format);
     }
     return zstandard;
 }

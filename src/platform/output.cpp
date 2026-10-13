@@ -3,23 +3,24 @@
 #include <cstdio>
 #include <limits>
 #include <random>
-#include <sstream>
+#include <format>
 #include <stdexcept>
 
 #ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <sddl.h>
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include <sddl.h>
+    #include "../utils/win32_resource.hpp"
 #else
-#include <cerrno>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
+    #include <cerrno>
+    #include <fcntl.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
 #endif
 
 namespace filecrypt::io {
@@ -77,21 +78,20 @@ OutputTransaction::OutputTransaction(const std::filesystem::path& destination)
     impl_->destination = destination;
     std::random_device random;
     for (unsigned attempt = 0; attempt < 32; ++attempt) {
-        std::ostringstream name;
-        name << ".filecrypt-" << std::hex << random() << random() << ".tmp";
-        const auto candidate = destination.parent_path() / name.str();
+        const auto first = random();
+        const auto second = random();
+        const auto candidate = destination.parent_path() / std::format(".filecrypt-{:x}{:x}.tmp", first, second);
 #ifdef _WIN32
         // 受保护的 DACL 只允许所有者和 SYSTEM 访问，避免继承宽松目录权限。
-        PSECURITY_DESCRIPTOR descriptor = nullptr;
+        utils::UniqueSecurityDescriptor descriptor;
         if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                L"D:P(A;;FA;;;OW)(A;;FA;;;SY)", SDDL_REVISION_1, &descriptor, nullptr)) {
+                L"D:P(A;;FA;;;OW)(A;;FA;;;SY)", SDDL_REVISION_1, std::out_ptr(descriptor), nullptr)) {
             throw std::runtime_error("Cannot set temporary output permissions");
         }
-        SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), descriptor, FALSE};
+        SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), descriptor.get(), FALSE};
         impl_->handle = CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE, 0, &attributes,
             CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
         const auto error = GetLastError();
-        LocalFree(descriptor);
         if (impl_->handle != INVALID_HANDLE_VALUE) {
             impl_->temporary = candidate;
             return;
@@ -185,6 +185,7 @@ void OutputTransaction::seek(std::uint64_t offset) {
 #endif
 }
 
+/// 通过原有句柄查询临时文件的实际长度，不改变读写位置。
 std::uint64_t OutputTransaction::size() const {
     if (impl_->committed) throw std::logic_error("Output already committed");
 #ifdef _WIN32

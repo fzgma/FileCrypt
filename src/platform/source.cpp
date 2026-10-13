@@ -2,28 +2,32 @@
 #include <algorithm>
 #include <stdexcept>
 #include <vector>
+#include <utility>
 #ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include "../utils/win32_resource.hpp"
 #else
-#include <cerrno>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
+    #include <cerrno>
+    #include <fcntl.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
 #endif
 
 namespace filecrypt::io {
 namespace {
 #ifdef _WIN32
+/// 从句柄提取普通文件或目录的身份与修改信息，拒绝 reparse point。
 SourceSnapshot from_handle(HANDLE handle) {
     BY_HANDLE_FILE_INFORMATION info{};
     if (!GetFileInformationByHandle(handle, &info) || (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
         GetFileType(handle) != FILE_TYPE_DISK) throw std::runtime_error("Unsupported or changed source object");
+    // Win32 将大小、对象编号和时间拆为两个 DWORD，先扩宽再合并高低位。
     auto pair = [](DWORD high, DWORD low) { return (std::uint64_t{high} << 32) | low; };
     return {(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
         pair(info.nFileSizeHigh, info.nFileSizeLow), info.dwVolumeSerialNumber,
@@ -31,6 +35,7 @@ SourceSnapshot from_handle(HANDLE handle) {
         pair(info.ftCreationTime.dwHighDateTime, info.ftCreationTime.dwLowDateTime)};
 }
 #else
+/// 从 stat 提取普通文件或目录的快照，拒绝链接与特殊对象。
 SourceSnapshot from_stat(const struct stat& info) {
     if (!S_ISDIR(info.st_mode) && !S_ISREG(info.st_mode)) throw std::runtime_error("Unsupported source object; links and special files are rejected");
     return {S_ISDIR(info.st_mode), static_cast<std::uint64_t>(info.st_size),
@@ -41,13 +46,13 @@ SourceSnapshot from_stat(const struct stat& info) {
 #endif
 }
 
+/// 不跟随末级链接读取源对象快照，供扫描与读取前后复核。
 SourceSnapshot inspect_source(const std::filesystem::path& path) {
 #ifdef _WIN32
-    const auto handle = CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
-    if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot inspect source");
-    try { const auto value = from_handle(handle); CloseHandle(handle); return value; }
-    catch (...) { CloseHandle(handle); throw; }
+    const utils::UniqueFileHandle handle(CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (!handle) throw std::runtime_error("Cannot inspect source");
+    return from_handle(handle.get());
 #else
     struct stat info{};
     if (lstat(path.c_str(), &info) != 0) throw std::runtime_error("Cannot inspect source");
@@ -55,6 +60,7 @@ SourceSnapshot inspect_source(const std::filesystem::path& path) {
 #endif
 }
 
+/// 在路径归一化前逐组件检查源对象，拒绝链接和非目录祖先。
 void validate_source_path(const std::filesystem::path& path) {
     // Windows 的 absolute() 也可能先消去 ..；先拼接当前目录，保留原始组件。
     auto absolute = path;
@@ -86,19 +92,18 @@ struct SourceFile::Impl {
     std::filesystem::path path;
     SourceSnapshot expected;
 #ifdef _WIN32
-    HANDLE handle{INVALID_HANDLE_VALUE};
-    std::vector<HANDLE> ancestors;
-    ~Impl() {
-        if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
-        for (const auto ancestor : ancestors) CloseHandle(ancestor);
-    }
+    // 成员按声明逆序析构，先关闭源文件，再释放阻止祖先替换的目录句柄。
+    std::vector<utils::UniqueFileHandle> ancestors;
+    utils::UniqueFileHandle handle;
 #else
     int descriptor{-1};
+    /// 关闭仍由源文件持有的 POSIX 描述符。
     ~Impl() { if (descriptor >= 0) close(descriptor); }
 #endif
+    /// 从已打开的文件对象读取快照，不重新解析其路径。
     SourceSnapshot snapshot() const {
 #ifdef _WIN32
-        return from_handle(handle);
+        return from_handle(handle.get());
 #else
         struct stat info{};
         if (fstat(descriptor, &info) != 0) throw std::runtime_error("Cannot inspect open source");
@@ -107,6 +112,7 @@ struct SourceFile::Impl {
     }
 };
 
+/// 不跟随链接打开扫描过的普通文件，并确认对象仍与扫描快照一致。
 SourceFile::SourceFile(const std::filesystem::path& path, const SourceSnapshot& expected) : impl_(std::make_unique<Impl>()) {
     for (const auto& component : path) {
         if (component == "." || component == "..") { validate_source_path(path); break; }
@@ -118,22 +124,21 @@ SourceFile::SourceFile(const std::filesystem::path& path, const SourceSnapshot& 
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
     auto ancestor_path = absolute.root_path();
     auto open_ancestor = [&] {
-        const auto ancestor = CreateFileW(ancestor_path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
-            nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
-        if (ancestor == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot lock source ancestor");
-        try {
-            if (!from_handle(ancestor).directory) throw std::runtime_error("Invalid source ancestor");
-            impl_->ancestors.push_back(ancestor);
-        } catch (...) { CloseHandle(ancestor); throw; }
+        utils::UniqueFileHandle ancestor(CreateFileW(ancestor_path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+            nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+        if (!ancestor) throw std::runtime_error("Cannot lock source ancestor");
+        if (!from_handle(ancestor.get()).directory) throw std::runtime_error("Invalid source ancestor");
+        // 扩容失败时局部所有者仍会关闭；成功后锁随容器存活。
+        impl_->ancestors.push_back(std::move(ancestor));
     };
     if (!absolute.root_name().native().starts_with(L"\\\\")) open_ancestor();
     for (const auto& component : absolute.parent_path().relative_path()) {
         if (component.empty()) continue;
         ancestor_path /= component; open_ancestor();
     }
-    impl_->handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-    if (impl_->handle == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot exclusively read source file");
+    impl_->handle.reset(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
+    if (!impl_->handle) throw std::runtime_error("Cannot exclusively read source file");
 #else
     // openat 锚定各级目录；并发替换路径组件也不能把读操作重定向到链接目标。
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
@@ -145,19 +150,22 @@ SourceFile::SourceFile(const std::filesystem::path& path, const SourceSnapshot& 
         close(parent); parent = next;
         if (parent < 0) throw std::runtime_error("Cannot open source ancestor without following links");
     }
+    // 非阻塞打开避免替换成 FIFO 后卡住，随后通过句柄快照拒绝特殊对象。
     impl_->descriptor = openat(parent, absolute.filename().c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
     close(parent);
     if (impl_->descriptor < 0) throw std::runtime_error("Cannot read source file without following links");
 #endif
     if (expected.directory || impl_->snapshot() != expected) throw std::runtime_error("Source changed after scan");
 }
+/// 释放文件句柄及为源路径持有的祖先目录句柄。
 SourceFile::~SourceFile() = default;
 
+/// 从已打开的普通文件读取至多 64 KiB，末尾返回零。
 std::size_t SourceFile::read(std::span<std::byte> bytes) {
     const auto size = std::min(bytes.size(), std::size_t{65536});
 #ifdef _WIN32
     DWORD count{};
-    if (!ReadFile(impl_->handle, bytes.data(), static_cast<DWORD>(size), &count, nullptr)) throw std::runtime_error("Source file read failed");
+    if (!ReadFile(impl_->handle.get(), bytes.data(), static_cast<DWORD>(size), &count, nullptr)) throw std::runtime_error("Source file read failed");
     return count;
 #else
     ssize_t count;
@@ -167,6 +175,7 @@ std::size_t SourceFile::read(std::span<std::byte> bytes) {
 #endif
 }
 
+/// 同时复核打开对象与原路径，检测内容变化和路径替换。
 void SourceFile::verify_unchanged() const {
     if (impl_->snapshot() != impl_->expected || inspect_source(impl_->path) != impl_->expected)
         throw std::runtime_error("Source file changed during encryption");

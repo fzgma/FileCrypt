@@ -15,7 +15,7 @@ std::vector<std::byte> build_aad(const Header& header, const Metadata& metadata)
 std::vector<std::byte> build_aad(std::span<const std::byte> header_bytes,
     std::span<const std::byte> metadata_bytes) {
     if (header_bytes.size() != header_size) {
-        throw std::invalid_argument("AAD requires exactly 32 header bytes");
+        throw FormatError("构造 AAD 时 Header 必须恰好为 32 字节");
     }
     const auto header = deserialize(header_bytes);
     const auto metadata = deserialize_metadata(header, metadata_bytes);
@@ -25,8 +25,29 @@ std::vector<std::byte> build_aad(std::span<const std::byte> header_bytes,
     const auto authenticated_metadata = metadata_bytes.first(layout.tag_offset);
     std::vector<std::byte> aad;
     aad.reserve(header_size + authenticated_metadata.size());
-    aad.insert(aad.end(), header_bytes.begin(), header_bytes.end());
-    aad.insert(aad.end(), authenticated_metadata.begin(), authenticated_metadata.end());
+    aad.append_range(header_bytes);
+    aad.append_range(authenticated_metadata);
     return aad;
 }
+
+/// 从逻辑对象构造 AAD，以 expected 返回已分类格式错误，保留其他异常。
+std::expected<std::vector<std::byte>, Error> try_build_aad(const Header& header,
+    const Metadata& metadata) {
+    try {
+        return build_aad(header, metadata);
+    } catch (const FormatError& error) {
+        return std::unexpected(error_from_exception(error));
+    }
+}
+
+/// 从原始认证字节构造 AAD，以 expected 返回格式校验错误。
+std::expected<std::vector<std::byte>, Error> try_build_aad(
+    std::span<const std::byte> header_bytes, std::span<const std::byte> metadata_bytes) {
+    try {
+        return build_aad(header_bytes, metadata_bytes);
+    } catch (const FormatError& error) {
+        return std::unexpected(error_from_exception(error));
+    }
+}
+
 } // namespace filecrypt::format::v1

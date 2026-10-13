@@ -6,8 +6,9 @@ add_test(NAME format_detect COMMAND ${FILECRYPT_TEST_RUNNER} "${detect_test_comm
 add_test(NAME crypto_core COMMAND ${FILECRYPT_TEST_RUNNER} "${crypto_test_command}")
 add_test(NAME compression_core COMMAND ${FILECRYPT_TEST_RUNNER} "${compression_test_command}")
 add_test(NAME format_directory COMMAND ${FILECRYPT_TEST_RUNNER} "${directory_test_command}")
+add_test(NAME format_expected COMMAND ${FILECRYPT_TEST_RUNNER} "${expected_test_command}")
 set_tests_properties(format_header format_metadata format_aad format_detect crypto_core compression_core format_directory
-    PROPERTIES LABELS "unit")
+    format_expected PROPERTIES LABELS "unit")
 add_test(NAME cli_info COMMAND "${CMAKE_COMMAND}"
     "-DFILECRYPT=${filecrypt_command}"
     "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/cli-test"

@@ -10,6 +10,7 @@ EOL 系统不承诺兼容，也不纳入正式测试矩阵。这是支持政策�
 ## 构建与链接
 
 - 使用仍在维护的 AlmaLinux 8 系 `quay.io/pypa/manylinux_2_28_x86_64` 构建，发布产物所需 glibc 符号不得高于 2.34。
+- 构建环境镜像预装 GCC Toolset 15，通过 `/opt/rh/gcc-toolset-15/root/usr` 显式选择编译器及归档工具；gcc/g++ 主版本必须为 15，静态运行库必须来自该 Toolset，实际 RPM 版本记录在日志。2026-10-12 用户确认提交 7f96ba4 的 Actions 全部通过，完成 GCC 15.2.1 工具链、C++23 预检、全量构建、ELF 审计及发行版/CPU 矩阵验证。
 - 程序和 Botan 均显式使用 `-march=x86-64 -mtune=generic`，不使用 `-march=native`。
 - Botan 3.13.0 从官方源码构建静态库，校验固定 SHA-256；不使用发行版预编译的 Botan。
 - Zstandard 1.5.7 同样从官方源码构建静态库并校验固定 SHA-256，使用通用 x86-64 编译选项。
@@ -20,6 +21,10 @@ Linux 构建脚本为 [.github/scripts/build-linux.sh](../.github/scripts/build-
 `Botan_USE_STATIC_LIBS=ON` 要求通过 `PKG_CONFIG_PATH` 指向同一 Botan 安装前缀的
 `botan-3.pc`，以读取静态传递依赖；普通开发构建默认仍查找共享库。
 
+Botan 显式使用 GCC 15 的 g++，Zstandard 与主程序的 CMake 显式设置编译器和归档工具，并重新初始化编译器缓存。Zstandard 固定 C17，避免工具链升级同时改变依赖的 C 语言版本。
+
+每次项目构建前编译并运行独立 C++23 预检，覆盖 print/format、append_range、ranges::to、enumerate/zip、expected/optional、byteswap/to_underlying/contains 及 out_ptr；使用通用 x86-64 和静态 C++/GCC 运行库。Linux 预检不额外链接 stdc++exp，也不要求安装该实验库；实际功能的编译、链接与运行仍须全部通过。预检程序纳入 ELF 审计，并在每个发行版和 qemu64 路径执行，不进入正式 Artifact。功能或运行库检查失败时停止，不回退到旧 GCC。
+
 manylinux 的兼容承诺针对 Python wheel，本项目借用其构建环境，不将其视为 ELF 兼容认证。
 构建环境低于项目支持下限是有意选择：RHEL 9 系预编译库（包括静态 C++ 运行库）可能以
 x86-64-v2 为目标，选择 AlmaLinux 8 系工具链可避免把该要求带入程序。
@@ -27,11 +32,24 @@ x86-64-v2 为目标，选择 AlmaLinux 8 系工具链可避免把该要求带入
 不人为引入 2.34 符号来阻止旧系统运行，也不将更旧系统纳入正式矩阵。
 Botan 的可选指令集优化保留运行时 CPU 探测，不能全局强制启用 AVX、SSE4 等指令。
 
+## 环境镜像与缓存
+
+工作流先通过 Buildx 构建已准备的环境镜像，加载到当前 runner 后再执行项目脚本；不发布镜像，也无需镜像仓库凭据。环境定义位于 [.github/docker](../.github/docker)，共享构建步骤位于 [linux-environment](../.github/actions/linux-environment/action.yml)。
+
+- 构建镜像基于 manylinux，预装 GCC Toolset 15、固定版本 CMake/Ninja，以及经源码摘要校验构建的 Botan/Zstandard 静态依赖。依赖固定安装到 `/opt/filecrypt/deps`，版本与摘要由 [linux-deps.env](../.github/scripts/linux-deps.env) 统一维护。依赖源码和中间产物在镜像构建结束前清理。
+- 六个发行版测试镜像预装 CMake 和 unzip；Ubuntu 22.04 同时预装 QEMU，供普通发行版与 CPU 基线复验共用。测试阶段不再重复安装工具。
+- 每个环境使用独立的 GitHub Actions 缓存范围，保存最终镜像所需的层。Buildx 每次检查上游底座；底座、安装脚本或依赖配置变化时重建相关层，项目源码变化不使环境缓存失效。
+- 使用 UTC ISO 周作为刷新参数，在新一周的首次运行重新安装环境软件包及构建依赖；没有运行时不会主动刷新。缓存未命中或被清理时从源码重新准备环境，缓存导出失败只影响后续复用。
+
+镜像准备成功后即导出缓存，后续项目测试失败不妨碍环境复用。缓存受 GitHub 的分支访问范围与仓库空间限制约束；主分支建立的缓存可供其他分支和标签运行读取。首次构建和周期刷新仍需联网安装软件及下载依赖，耗时应与缓存命中的运行分别比较。
+
+项目源码、可执行文件与测试结果不放入环境镜像。每次运行仍重新执行工具链检查、C++23 预检、项目全量构建、全部测试与 ELF 审计；发行版矩阵及 qemu64 复验继续运行本次编译的同一批程序。镜像缓存不作为验证通过的依据。
+
 ## 验证与分发
 
 Linux 构建与发行版/CPU 复验脚本先选择已安装的 UTF-8 locale，并验证字符集，统一设置 `LANG` 和 `LC_ALL`；没有可用 UTF-8 locale 时明确失败。目录素材使用 Info-ZIP `unzip` 解包，避免 CMake/libarchive 将 NFD 文件名归一化为 NFC。
 
-Linux 构建后执行 7 项单元测试、3 项正式程序冒烟测试和 3 项非冒烟集成测试，共 13 项。非冒烟集成测试包括文件/目录 API 流程及 `cli_directory_corpus` 素材往返，后者校验 93 文件、23 子目录的完整树、文件大小和 SHA-256。
+Linux 构建后执行 8 项单元测试、3 项正式程序冒烟测试和 3 项非冒烟集成测试，共 14 项。单元测试包含 Format 层 expected 接口。非冒烟集成测试包括文件/目录 API 流程及 `cli_directory_corpus` 素材往返，后者校验 93 文件、23 子目录的完整树、文件大小和 SHA-256。
 冒烟测试直接调用正式可执行文件，验证格式生成与读取、两种算法的压缩及无压缩加解密、密码错误和已有输出保护；
 CLI 测试同时覆盖中文、空格及 emoji 路径和重定向 UTF-8 输出。
 CTest 单元测试使用 `unit` 标签，所有集成测试使用 `integration` 标签，冒烟测试额外使用 `smoke` 标签，素材测试额外使用 `corpus` 标签。构建流程通过 `-L integration -LE smoke` 选择 3 项非冒烟集成测试。
@@ -44,7 +62,7 @@ Linux 随后审计正式程序和测试程序的 ELF：
 - 动态依赖仅允许 glibc 系统库，不允许 Botan、Zstandard、libstdc++、libgcc 或其他第三方共享库。
 - ELF ISA 必需属性不能声明 x86-64-v2/v3/v4；属性检查不能替代实际运行验证。
 
-同一批已编译程序会在以下正式矩阵中执行全部 13 项对应测试，包含目录素材往返，不重新编译：
+同一批已编译程序会在以下正式矩阵中执行全部 14 项对应测试，包含目录素材往返，不重新编译：
 
 | 发行版 | 测试版本 |
 | --- | --- |
@@ -67,7 +85,7 @@ Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即�
 
 工作流使用 checkout v7.0.1、upload-artifact v7.0.2、download-artifact v8.0.1，均使用 Node 24。上传显式设置 `archive: true` 保留命名 ZIP Artifact，下载使用默认解压和摘要校验，只从同次运行获取产物。
 
-本轮目录素材、UTF-8 locale、发行版矩阵及 CPU 模拟验证已由用户确认完成。后续改动的验证待办见 [TODO](TODO.md)。
+本轮目录素材、UTF-8 locale、发行版矩阵及 CPU 模拟验证已由用户确认完成。环境镜像缓存改造的远端验证尚未完成，范围见 [TODO](TODO.md)。
 
 ## 参考资料
 
@@ -75,3 +93,5 @@ Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即�
 - [GCC 静态运行库链接选项](https://gcc.gnu.org/onlinedocs/gcc/Link-Options.html)
 - [GCC x86 目标指令集选项](https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html)
 - [Botan 构建与模块裁剪](https://botan.randombit.net/handbook/building.html)
+- [Docker GitHub Actions 构建缓存](https://docs.docker.com/build/ci/github-actions/cache/)
+- [GitHub 缓存范围与空间限制](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching)

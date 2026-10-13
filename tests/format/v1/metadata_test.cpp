@@ -277,6 +277,7 @@ void test_boundaries() {
     }
 }
 
+/// 验证登记后缀映射、单文件类型往返及目录 N/A 约束。
 void test_file_types() {
     constexpr std::string_view extensions[]{"txt", "md", "csv", "json", "xml", "yaml", "yml", "pdf",
         "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "zip", "7z", "rar",

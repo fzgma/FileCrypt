@@ -1,0 +1,36 @@
+name: Linux environment
+description: 构建并缓存 Linux 环境镜像，加载到当前 runner，不发布镜像。
+inputs:
+  kind:
+    description: Dockerfile 类型（build 或 test）
+    required: true
+  name:
+    description: 本地镜像名称及独立缓存范围
+    required: true
+  base-image:
+    description: 上游基础镜像
+    required: true
+  refresh:
+    description: 环境刷新周期
+    required: true
+  install-qemu:
+    description: 是否安装 CPU 基线复验工具
+    default: '0'
+runs:
+  using: composite
+  steps:
+    - uses: docker/build-push-action@v7
+      with:
+        context: ${{ github.workspace }}/.github
+        file: ${{ github.workspace }}/.github/docker/${{ inputs.kind }}.Dockerfile
+        platforms: linux/amd64
+        pull: true
+        load: true
+        push: false
+        tags: filecrypt-${{ inputs.name }}:local
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image }}
+          ENVIRONMENT_REFRESH=${{ inputs.refresh }}
+          INSTALL_QEMU=${{ inputs.install-qemu }}
+        cache-from: type=gha,version=2,scope=filecrypt-linux-v1-${{ inputs.name }}
+        cache-to: type=gha,version=2,scope=filecrypt-linux-v1-${{ inputs.name }},mode=min,ignore-error=true

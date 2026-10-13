@@ -1,8 +1,10 @@
 #pragma once
 
+#include <filecrypt/error.hpp>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <span>
 
 namespace filecrypt::format::v1 {
@@ -30,5 +32,8 @@ struct Header {
 /// 从输入的前 32 字节还原 Header，忽略后续字节。
 // 输入不足 32 字节或 Magic 错误时抛出 std::invalid_argument。
 [[nodiscard]] Header deserialize(std::span<const std::byte> data);
+
+/// 将格式失败返回为 invalid_format；保留原异常接口，分配或未知异常继续传播。
+[[nodiscard]] std::expected<Header, Error> try_deserialize(std::span<const std::byte> data);
 
 } // namespace filecrypt::format::v1

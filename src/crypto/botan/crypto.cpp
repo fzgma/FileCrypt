@@ -138,13 +138,14 @@ SecureBytes CipherContext::update(std::span<const std::uint8_t> input) {
         SecureBytes output;
         output.reserve(input.size());
         const auto granularity = impl_->mode->update_granularity();
+        // 只暂存不足一个 Botan 更新粒度的尾部，整块处理后立即清空安全缓冲区。
         while (!input.empty()) {
             const auto take = std::min(input.size(), granularity - impl_->pending.size());
-            impl_->pending.insert(impl_->pending.end(), input.begin(), input.begin() + take);
+            impl_->pending.append_range(input.first(take));
             input = input.subspan(take);
             if (impl_->pending.size() == granularity) {
                 const auto written = impl_->mode->process(impl_->pending.data(), granularity);
-                output.insert(output.end(), impl_->pending.begin(), impl_->pending.begin() + written);
+                output.append_range(std::span(impl_->pending).first(written));
                 impl_->pending.clear();
             }
         }
@@ -166,7 +167,8 @@ FinalResult CipherContext::finish(std::span<const std::uint8_t> tag) {
             throw std::invalid_argument("Invalid authentication tag size");
         }
         if (!encrypting) {
-            impl_->pending.insert(impl_->pending.end(), tag.begin(), tag.end());
+            // Botan finish 接受尾部密文与 Tag 拼接的输入，v1 文件中的 Tag 单独存储。
+            impl_->pending.append_range(tag);
         }
         impl_->mode->finish(impl_->pending);
         FinalResult result;
@@ -194,7 +196,7 @@ Encrypted encrypt(Algorithm algorithm, std::span<const std::uint8_t> key,
     CipherContext context(algorithm, Direction::encrypt, key, nonce, aad);
     auto output = context.update(plaintext);
     auto final = context.finish();
-    output.insert(output.end(), final.output.begin(), final.output.end());
+    output.append_range(final.output);
     Encrypted result;
     result.ciphertext.assign(output.begin(), output.end());
     std::copy(final.tag.begin(), final.tag.end(), result.tag.begin());
@@ -208,7 +210,7 @@ SecureBytes decrypt(Algorithm algorithm, std::span<const std::uint8_t> key,
     CipherContext context(algorithm, Direction::decrypt, key, nonce, aad);
     auto plaintext = context.update(ciphertext);
     auto final = context.finish(tag);
-    plaintext.insert(plaintext.end(), final.output.begin(), final.output.end());
+    plaintext.append_range(final.output);
     return plaintext;
 }
 } // namespace filecrypt::crypto

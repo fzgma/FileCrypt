@@ -19,7 +19,7 @@
 
 - 固定字段显式小端编码，Name Length 使用 unsigned LEB128；Index 结束由外层 Metadata 的 Index Length 指定。
 - ID 唯一且按升序排列，Root 固定 ID 0、Parent 0xFFFFFFFF、Type Directory；普通 ID 保持协议定义的 uint32 范围。
-- 在任何父 ID 二分查找之前先核对完整 ID 序列，避免对不可信无序范围执行要求有序的算法。
+- 在任何父 ID 二分查找之前先通过 `views::pairwise` 核对完整 ID 序列，再用 `views::enumerate` 遍历索引与 Entry，避免对不可信无序范围执行要求有序的算法。
 - 不要求普通 ID 连续，也不要求父 ID 小于子 ID；父节点必须存在且为目录，所有节点必须连到 Root，禁止环。
 - Name 为非空、合法 UTF-8 单组件，禁止 NUL、分隔符、`.` 和 `..`，拒绝过长编码、代理码点及无效码点；同一父节点下按原始字节检查重名。
 - Directory 的 Offset/Length 必须为零。File Data 按 ID 严格连续，检查累计长度溢出，并与实际载荷长度精确比较，拒绝空洞、重叠、截断和未引用尾部。
@@ -56,6 +56,8 @@ Windows 源文件通过不跟随 reparse point 的只读句柄打开，排除并
 Windows 暂存目录使用受保护、可继承的所有者/SYSTEM DACL，文件由已有 OutputTransaction 创建；Linux 目录 0700、文件 0600。恢复不保留原始时间戳、权限、稀疏布局、ACL 或链接关系。
 
 Windows 使用不带覆盖标志的 MoveFileExW；Linux 使用 `renameat2(RENAME_NOREPLACE)`，避免普通 rename 替换已存在的空目录。若内核或文件系统不支持此操作，明确失败，不降级为存在竞态的检查后 rename。清理不跟随 symlink/reparse point。
+
+Windows 目录移动遇到访问拒绝或共享冲突时，最多尝试十次，相邻尝试等待 50 ms，以容忍短暂占用。每次尝试前重新复核暂存根身份；目标已存在、身份变化或其他错误不继续等待，持续拒绝最终仍报错。此策略不修改权限，不增加覆盖或跨卷复制选项。共用实现位于 `src/utils/win32_directory_move.hpp`，目录测试夹具的移动也使用该逻辑。
 
 ## 平台名称与冲突
 

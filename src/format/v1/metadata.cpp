@@ -1,5 +1,6 @@
 #include <filecrypt/format/v1/metadata.hpp>
 #include <filecrypt/format/v1/registry.hpp>
+#include "../../utils/little_endian.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -10,57 +11,47 @@ constexpr std::uint16_t directory_flag = 0x8000;
 constexpr std::uint16_t compression_flag = 0x4000;
 
 /// 条件不成立时抛出可定位格式问题的异常。
-void check(bool condition, const char* message) {
+void check(bool condition, const char* message, ErrorCode code = ErrorCode::invalid_format) {
     if (!condition) {
-        throw std::invalid_argument(message);
+        throw FormatError(message, code);
     }
 }
 
 /// 校验 Metadata 所依赖的 v1 Header 上下文。
 void validate_context(const Header& header) {
-    check(header.version == 1, "Unsupported FileCrypt version");
-    check((header.flags & 0x3FFF) == 0, "Reserved header flags must be zero");
+    check(header.version == 1, "不支持的 FileCrypt 格式版本", ErrorCode::unsupported_format);
+    check((header.flags & 0x3FFF) == 0, "Header 的保留标志位必须为零");
     check(std::all_of(header.reserved.begin(), header.reserved.end(),
         [](std::byte value) { return value == std::byte{0}; }),
-        "Reserved header bytes must be zero");
+        "Header 的保留字节必须为零");
     const bool directory = (header.flags & directory_flag) != 0;
     check(directory ? header.file_type == 0 : header.file_type != 0,
-        "Invalid v1 file type for container");
+        "v1 文件类型与容器类型不匹配");
     (void)file_type_definition(header.file_type);
 }
 
 /// 校验 Argon2id 的协议参数而不执行密钥派生。
 void validate_parameters(const Argon2idParameters& parameters) {
-    check(parameters.version == 0x13, "Unsupported Argon2 version");
+    check(parameters.version == 0x13, "Argon2 版本不符合 v1 参数编码要求");
     check(std::all_of(parameters.reserved.begin(), parameters.reserved.end(),
         [](std::byte value) { return value == std::byte{0}; }),
-        "Reserved Argon2 bytes must be zero");
-    check(parameters.time_cost >= 1, "Invalid Argon2 time cost");
+        "Argon2 参数的保留字节必须为零");
+    check(parameters.time_cost >= 1, "Argon2 迭代次数必须至少为 1");
     check(parameters.parallelism >= 1 && parameters.parallelism <= 0xFFFFFF,
-        "Invalid Argon2 parallelism");
+        "Argon2 并行度必须为 1 到 16777215");
     // 先提升为 64 位再相乘，避免恶意输入引发 32 位溢出。
     check(parameters.memory_cost_kib >= std::uint64_t{8} * parameters.parallelism,
-        "Invalid Argon2 memory cost");
+        "Argon2 内存成本必须至少为并行度的 8 倍 KiB");
 }
 
-/// 将无符号整数写入指定位置的小端字段。
-template <typename Integer>
-void write_le(std::span<std::byte> data, std::size_t offset, Integer value) {
-    for (std::size_t i = 0; i < sizeof(Integer); ++i) {
-        data[offset + i] = static_cast<std::byte>((value >> (8 * i)) & 0xFFu);
-    }
-}
+using utils::write_le;
 
 /// 确认字段未截断后读取指定位置的小端整数。
-template <typename Integer>
+template <utils::LittleEndianInteger Integer>
 Integer read_le(std::span<const std::byte> data, std::size_t offset) {
     check(offset <= data.size() && sizeof(Integer) <= data.size() - offset,
-        "Truncated Metadata field");
-    std::uint64_t value{};
-    for (std::size_t i = 0; i < sizeof(Integer); ++i) {
-        value |= std::to_integer<std::uint64_t>(data[offset + i]) << (8 * i);
-    }
-    return static_cast<Integer>(value);
+        "Metadata 字段被截断");
+    return utils::read_le<Integer>(data, offset);
 }
 }
 
@@ -90,6 +81,7 @@ MetadataLayout metadata_layout(const Header& header, std::uint16_t kdf_id,
     layout.nonce_offset = offset;
     offset += algorithm.nonce_size;
     layout.padding_offset = offset;
+    // 对齐的是字段、Padding 和末尾 Tag 的总长度；Padding 本身只需 0 至 15 字节。
     layout.padding_size = (16 - (offset + algorithm.tag_size) % 16) % 16;
     layout.tag_offset = offset + layout.padding_size;
     layout.metadata_size = layout.tag_offset + algorithm.tag_size;
@@ -100,18 +92,18 @@ MetadataLayout metadata_layout(const Header& header, std::uint16_t kdf_id,
 std::vector<std::byte> serialize_metadata(const Header& header, const Metadata& metadata) {
     const auto layout = metadata_layout(header, metadata.kdf_id,
         metadata.compression ? metadata.compression->id : 1);
-    check(header.metadata_length == layout.metadata_size, "Metadata length mismatch");
+    check(header.metadata_length == layout.metadata_size, "Metadata 长度与布局不匹配");
     check(metadata.index_length.has_value() == layout.index_offset.has_value(),
-        "Index Length presence mismatch");
+        "Index Length 字段的存在状态与容器类型不匹配");
     check(metadata.compression.has_value() == layout.compression_offset.has_value(),
-        "Compression presence mismatch");
+        "压缩字段的存在状态与 Header 标志不匹配");
     if (metadata.compression) {
         check(metadata.compression->parameters.size() ==
             compression_definition(metadata.compression->id).parameters_size,
-            "Invalid compression parameters length");
+            "压缩参数长度不符合算法定义");
     }
     check(metadata.nonce.size() == algorithm_definition(header.algorithm).nonce_size,
-        "Invalid nonce length");
+        "Nonce 长度不符合加密算法定义");
     validate_parameters(metadata.kdf_parameters);
     std::vector<std::byte> data(layout.metadata_size, std::byte{0});
     if (layout.index_offset) {
@@ -137,7 +129,7 @@ std::vector<std::byte> serialize_metadata(const Header& header, const Metadata& 
 Metadata deserialize_metadata(const Header& header, std::span<const std::byte> data) {
     validate_context(header);
     (void)algorithm_definition(header.algorithm);
-    check(header.metadata_length == data.size(), "Metadata input length mismatch");
+    check(header.metadata_length == data.size(), "Metadata 输入长度与 Header 不匹配");
     Metadata metadata;
     std::size_t offset{};
     if ((header.flags & directory_flag) != 0) {
@@ -148,7 +140,7 @@ Metadata deserialize_metadata(const Header& header, std::span<const std::byte> d
         const auto id = read_le<std::uint16_t>(data, offset);
         const auto length = read_le<std::uint16_t>(data, offset + 2);
         const auto& compression = compression_definition(id);
-        check(length == compression.parameters_size, "Invalid compression parameters length");
+        check(length == compression.parameters_size, "压缩参数长度不符合算法定义");
         metadata.compression = CompressionMetadata{id, {}};
         offset += 4;
     }
@@ -156,7 +148,7 @@ Metadata deserialize_metadata(const Header& header, std::span<const std::byte> d
     const auto layout = metadata_layout(header, metadata.kdf_id,
         metadata.compression ? metadata.compression->id : 1);
     // 布局只可能来自已支持的 Registry，先校验长度再访问后续字节。
-    check(data.size() == layout.metadata_size, "Metadata layout length mismatch");
+    check(data.size() == layout.metadata_size, "Metadata 实际长度与布局不匹配");
     offset = layout.kdf_parameters_offset;
     auto& parameters = metadata.kdf_parameters;
     parameters.version = std::to_integer<std::uint8_t>(data[offset]);
@@ -169,7 +161,18 @@ Metadata deserialize_metadata(const Header& header, std::span<const std::byte> d
     metadata.nonce.assign(data.begin() + layout.nonce_offset, data.begin() + layout.padding_offset);
     std::copy_n(data.begin() + layout.tag_offset, metadata.tag.size(), metadata.tag.begin());
     check(std::all_of(data.begin() + layout.padding_offset, data.begin() + layout.tag_offset,
-        [](std::byte value) { return value == std::byte{0}; }), "Nonzero Metadata padding");
+        [](std::byte value) { return value == std::byte{0}; }), "Metadata 填充字节必须全部为零");
     return metadata;
 }
+
+/// 复用 Metadata 校验与解析，以 expected 返回格式语义错误，保留其他异常。
+std::expected<Metadata, Error> try_deserialize_metadata(const Header& header,
+    std::span<const std::byte> data) {
+    try {
+        return deserialize_metadata(header, data);
+    } catch (const FormatError& error) {
+        return std::unexpected(error_from_exception(error));
+    }
+}
+
 } // namespace filecrypt::format::v1

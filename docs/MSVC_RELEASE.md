@@ -1,12 +1,12 @@
 # Windows MSVC x64 发布
 
-Windows 正式程序由 MSVC x64 构建，以单个可执行文件分发。当前 CI 使用 `windows-2022` runner、Visual Studio 2022 和 PowerShell；该构建环境不代表已经验证所有 Windows 版本。
+Windows 正式程序由 MSVC x64 构建，以单个可执行文件分发。当前 CI 使用 `windows-latest` runner（Windows Server 2025）、Visual Studio 2026 和 PowerShell；该构建环境不代表已经验证所有 Windows 版本。
 
 ## 构建与链接
 
 [构建测试工作流](../.github/workflows/build-test.yml)的 `msvc` 任务使用 runner 提供的 vcpkg 安装 Botan 和 Zstandard，依赖版本随该 vcpkg checkout 的 ports 确定。
 
-自定义 [x64-windows-release triplet](../cmake/triplets/x64-windows-release.cmake)要求 x64、静态依赖库、静态 MSVC 运行库，并且仅构建 Release。项目使用 Visual Studio 17 2022 多配置生成器，设置 `CMAKE_CONFIGURATION_TYPES=Release` 和 `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`，通过 `Botan_USE_STATIC_LIBS=ON`、`Zstd_USE_STATIC_LIBS=ON` 链接静态依赖。
+自定义 [x64-windows-release triplet](../cmake/triplets/x64-windows-release.cmake)要求 x64、静态依赖库、静态 MSVC 运行库，并且仅构建 Release。项目使用 Visual Studio 18 2026 多配置生成器，设置 `CMAKE_CONFIGURATION_TYPES=Release` 和 `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`，通过 `Botan_USE_STATIC_LIBS=ON`、`Zstd_USE_STATIC_LIBS=ON` 链接静态依赖。
 
 MSVC 编译启用 `/EHsc` 和 `/utf-8`，将缺少异常展开语义的警告视为错误，确保输出事务清理与 Unicode 源码处理符合预期。正式程序及全部测试通过 `build_all` 目标构建。
 
@@ -18,9 +18,9 @@ MSVC 使用 GitHub Actions Cache 保存独立目录中的 vcpkg 二进制包，�
 
 ## 验证与分发
 
-MSVC 构建后执行 7 项单元测试、4 项正式程序冒烟测试和 3 项非冒烟集成测试，共 14 项：
+MSVC 构建后执行 8 项单元测试、4 项正式程序冒烟测试和 3 项非冒烟集成测试，共 15 项：
 
-- 单元测试覆盖 Header、Metadata、AAD、版本识别、密码学、压缩和目录格式。
+- 单元测试覆盖 Header、Metadata、AAD、版本识别、密码学、压缩、目录格式及 Format 层 expected 接口。
 - 冒烟测试覆盖信息读取、文件及目录 CLI 加解密，以及隐藏控制台测试。控制台测试验证非 UTF-8 代码页下的中文标准输出、错误输出及退出后的代码页恢复。
 - 非冒烟集成测试覆盖文件/目录 API 流程和 `cli_directory_corpus`，素材测试执行两种算法与压缩开关四组往返，校验 93 文件、23 子目录的完整树、大小与 SHA-256，并拒绝错误密码。
 

@@ -11,38 +11,46 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <system_error>
 #include "fixture.hpp"
 #ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include "../../src/utils/win32_directory_move.hpp"
 #else
-#include <sys/stat.h>
+    #include <sys/stat.h>
 #endif
 
 namespace {
 using namespace filecrypt;
 namespace format = filecrypt::format::v1;
+/// 条件失败时报告目录流程测试的具体原因。
 void check(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
+/// 验证目录操作明确失败，防止非法样本被接受。
 template<class F> void rejects(F action) {
     try { action(); } catch (const std::exception&) { return; }
     throw std::runtime_error("Expected directory operation failure");
 }
+/// 在本轮夹具中写入指定字节，供往返或畸形载荷测试使用。
 void write(const std::filesystem::path& path, std::span<const std::byte> bytes) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     check(static_cast<bool>(out), "Cannot write fixture");
 }
+/// 将文本样本作为原始字节写入测试文件。
 void write(const std::filesystem::path& path, std::string_view text) { write(path, std::as_bytes(std::span(text))); }
+/// 读取测试文件的全部字节，用于独立内容比较。
 std::string read(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     check(static_cast<bool>(in), "Cannot read restored file");
     return {std::istreambuf_iterator<char>(in), {}};
 }
+/// 收集相对路径、对象类型与文件内容，验证整个恢复树。
 auto inventory(const std::filesystem::path& root) {
     std::map<std::filesystem::path, std::string> entries;
     for (const auto& item : std::filesystem::recursive_directory_iterator(root)) {
@@ -50,13 +58,16 @@ auto inventory(const std::filesystem::path& root) {
     }
     return entries;
 }
+/// 检查夹具内没有遗留临时文件或目录，不执行删除。
 void clean(const std::filesystem::path& directory) {
     for (const auto& item : std::filesystem::directory_iterator(directory))
         check(!item.path().filename().u8string().starts_with(u8".filecrypt-"), "Temporary file or directory leaked");
 }
 const crypto::SecureBytes password{'d', 'i', 'r'};
+/// 返回低成本测试 KDF 配置，不作为生产默认值。
 app::EncryptOptions options() { app::EncryptOptions result; result.kdf = {8192, 1, 1}; return result; }
 
+/// 为测试指定的归档载荷生成有效 Tag，使畸形结构进入认证后的校验阶段。
 void authenticated_archive(const std::filesystem::path& file, std::span<const std::byte> plaintext,
     std::uint64_t index_length, bool compressed = false) {
     format::Header header;
@@ -89,6 +100,7 @@ void authenticated_archive(const std::filesystem::path& file, std::span<const st
     write(file, bytes);
 }
 
+/// 验证目录往返、运行上限、源变化、畸形归档和输出事务保护。
 void tests(const std::filesystem::path& base) {
     const auto source = base / std::filesystem::path(u8"原始 根 🔐");
     const auto output = base / "restored";
@@ -233,7 +245,17 @@ void tests(const std::filesystem::path& base) {
         io::DirectoryTransaction transaction(output);
         replaced = transaction.root();
         write(replaced / "owned", "private");
+#ifdef _WIN32
+        const auto original = io::inspect_source(replaced);
+        const auto error = utils::move_directory_no_replace(replaced, moved, [&] {
+            const auto current = io::inspect_source(replaced);
+            check(current.directory && current.device == original.device && current.identity == original.identity,
+                "Fixture directory was replaced before rename");
+        });
+        if (error != ERROR_SUCCESS) throw std::system_error(static_cast<int>(error), std::system_category(), "Fixture directory rename failed");
+#else
         std::filesystem::rename(replaced, moved);
+#endif
         std::filesystem::create_directory(replaced);
         write(replaced / "unrelated", "keep");
         rejects([&] { transaction.commit(); });
@@ -258,6 +280,7 @@ void tests(const std::filesystem::path& base) {
     const auto link = base / "source-link";
     std::error_code error;
     std::filesystem::create_directory_symlink(source, link, error);
+    // Windows 创建符号链接可能缺少权限；只有夹具创建成功才执行对应检查。
     if (!error) {
         rejects([&] { app::encrypt_file(link, encrypted, password, options()); });
         rejects([&] { app::encrypt_file(link / ".." / empty.filename(), encrypted, password, options()); });
@@ -275,6 +298,7 @@ void tests(const std::filesystem::path& base) {
 }
 }
 
+/// 创建独立夹具并运行目录测试，成功清理，失败保留现场。
 int run_tests(const std::filesystem::path& directory) {
     try {
         const auto base = test_fixture::create(std::filesystem::absolute(directory).lexically_normal());
@@ -285,6 +309,7 @@ int run_tests(const std::filesystem::path& directory) {
 }
 
 #ifdef _WIN32
+/// 接收原生 Unicode 路径；清理模式只删除经过类型与名称检查的 junction 本身。
 int wmain(int argc, wchar_t** argv) {
     if (argc == 3 && std::wstring_view(argv[1]) == L"--remove-junction") {
         const auto path = std::filesystem::absolute(argv[2]).lexically_normal();
@@ -296,5 +321,6 @@ int wmain(int argc, wchar_t** argv) {
     return argc == 2 ? run_tests(argv[1]) : 1;
 }
 #else
+/// 用命令行指定的夹具父目录运行 POSIX 目录测试。
 int main(int argc, char** argv) { return argc == 2 ? run_tests(argv[1]) : 1; }
 #endif

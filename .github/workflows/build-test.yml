@@ -9,32 +9,86 @@ permissions:
 
 jobs:
   linux:
-    name: Linux / x86-64 / glibc 2.34
-    runs-on: ubuntu-24.04
+    name: Linux / GCC 15 / x86-64
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7.0.1
-      - name: 构建静态依赖和通用 Linux 发布版
+      - uses: actions/checkout@v7
+      - name: 确定 Linux 环境刷新周期
+        id: linux-environment
+        run: echo "refresh=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - name: 准备 Linux 构建环境
+        uses: ./.github/actions/linux-environment
+        with:
+          kind: build
+          name: linux-build
+          base-image: quay.io/pypa/manylinux_2_28_x86_64
+          refresh: ${{ steps.linux-environment.outputs.refresh }}
+      - name: 构建并验证通用 Linux 发布版
         run: |
           docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
             --env GITHUB_SHA --env GITHUB_SERVER_URL --env GITHUB_REPOSITORY --env GITHUB_RUN_ID \
-            quay.io/pypa/manylinux_2_28_x86_64 \
+            filecrypt-linux-build:local \
             bash .github/scripts/build-linux.sh
+      - name: 准备 Ubuntu 22.04 与 CPU 基线环境
+        uses: ./.github/actions/linux-environment
+        with:
+          kind: test
+          name: ubuntu-22.04
+          base-image: ubuntu:22.04
+          install-qemu: '1'
+          refresh: ${{ steps.linux-environment.outputs.refresh }}
+      - name: 准备 Ubuntu 24.04 测试环境
+        uses: ./.github/actions/linux-environment
+        with:
+          kind: test
+          name: ubuntu-24.04
+          base-image: ubuntu:24.04
+          refresh: ${{ steps.linux-environment.outputs.refresh }}
+      - name: 准备 Debian 12 测试环境
+        uses: ./.github/actions/linux-environment
+        with:
+          kind: test
+          name: debian-12
+          base-image: debian:12
+          refresh: ${{ steps.linux-environment.outputs.refresh }}
+      - name: 准备 Debian 13 测试环境
+        uses: ./.github/actions/linux-environment
+        with:
+          kind: test
+          name: debian-13
+          base-image: debian:13
+          refresh: ${{ steps.linux-environment.outputs.refresh }}
+      - name: 准备 AlmaLinux 9 测试环境
+        uses: ./.github/actions/linux-environment
+        with:
+          kind: test
+          name: almalinux-9
+          base-image: almalinux:9
+          refresh: ${{ steps.linux-environment.outputs.refresh }}
+      - name: 准备 Arch Linux 测试环境
+        uses: ./.github/actions/linux-environment
+        with:
+          kind: test
+          name: archlinux-base
+          base-image: archlinux:base
+          refresh: ${{ steps.linux-environment.outputs.refresh }}
       - name: 在受支持发行版运行单元、冒烟和文件流程测试
         run: |
           set -euo pipefail
           # 只列仍在维护的版本；版本进入 EOL 后从正式矩阵移除。
-          for image in ubuntu:22.04 ubuntu:24.04 debian:12 debian:13 almalinux:9 archlinux:base; do
+          for distribution in ubuntu-22.04 ubuntu-24.04 debian-12 debian-13 almalinux-9 archlinux-base; do
             docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
-              "$image" bash .github/scripts/test-linux.sh "${image//:/-}"
+              "filecrypt-$distribution:local" bash .github/scripts/test-linux.sh "$distribution"
           done
       - name: 在不满足 x86-64-v2 的模拟 CPU 上运行单元、冒烟和文件流程测试
         run: |
           docker run --rm --volume "$PWD:/workspace" --workdir /workspace \
             --env FILECRYPT_TEST_CPU=baseline \
-            ubuntu:22.04 bash .github/scripts/test-linux.sh ubuntu-22.04-baseline
+            filecrypt-ubuntu-22.04:local bash .github/scripts/test-linux.sh ubuntu-22.04-baseline
       - name: 仅保留 Linux 正式可执行文件
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: filecrypt-linux-x86_64
           archive: true
@@ -44,13 +98,13 @@ jobs:
 
   msvc:
     name: Windows / MSVC x64
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - name: 准备 vcpkg 二进制缓存
         id: vcpkg-cache-config
         run: |
@@ -61,12 +115,12 @@ jobs:
           "revision=$revision" >> $env:GITHUB_OUTPUT
       - name: 恢复 vcpkg 二进制缓存
         id: vcpkg-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
-          key: vcpkg-binary-v1-windows-2022-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: vcpkg-binary-v1-windows-2025-vs2026-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            vcpkg-binary-v1-windows-2022-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-
+            vcpkg-binary-v1-windows-2025-vs2026-${{ steps.vcpkg-cache-config.outputs.revision }}-${{ hashFiles('cmake/triplets/x64-windows-release.cmake') }}-
       - name: 使用 vcpkg 安装 Botan 和 Zstandard
         id: vcpkg-install
         run: |
@@ -79,13 +133,13 @@ jobs:
       # 安装成功且新增二进制包时立即保存，后续测试失败也能复用依赖。
       - name: 保存 vcpkg 二进制缓存
         if: steps.vcpkg-install.outputs.cache-updated == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ runner.temp }}/vcpkg-binary-cache
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: 配置 Release
         run: >-
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          cmake -S . -B build -G "Visual Studio 18 2026" -A x64
           "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_TARGET_TRIPLET=x64-windows-release
           "-DVCPKG_OVERLAY_TRIPLETS=$env:GITHUB_WORKSPACE/cmake/triplets"
@@ -109,7 +163,7 @@ jobs:
           & ./build/standalone/filecrypt.exe -h
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 仅保留 Windows 正式可执行文件
-        uses: actions/upload-artifact@v7.0.2
+        uses: actions/upload-artifact@v7
         with:
           name: filecrypt-windows-x86_64
           archive: true
