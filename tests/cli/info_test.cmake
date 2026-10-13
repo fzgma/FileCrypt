@@ -133,3 +133,5 @@ run_success(info info "${TEST_DIR}/${unicode_name}")
 expect_text("${info}" "加密文件名：${unicode_name}")
 run_failure(sample "${TEST_DIR}/bad-option.fcry" "未知选项 🔑")
 expect_text("${last_error}" "未知选项：未知选项 🔑")
+
+include("${CMAKE_CURRENT_LIST_DIR}/password_test.cmake")

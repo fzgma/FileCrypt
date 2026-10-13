@@ -11,6 +11,7 @@ add_executable(detect_test format/detect_test.cpp)
 target_link_libraries(detect_test PRIVATE FileCrypt::Format FileCrypt::App)
 
 add_executable(crypto_test crypto/crypto_test.cpp)
+target_sources(crypto_test PRIVATE crypto/password_generator_test.cpp)
 target_link_libraries(crypto_test PRIVATE FileCrypt::Crypto FileCrypt::Format)
 
 add_executable(compression_test compression/compression_test.cpp)

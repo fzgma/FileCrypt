@@ -11,8 +11,9 @@
 
 ## 跨平台与工程完善
 
+- 已加入随机密码生成：`password` / `-g`，默认长度 12，可选长度 8–64 和三种字符集；待 Windows/Linux 远端验证。
 - 补齐 MSVC 环境诊断与符号链接夹具跳过报告；配置本地独立 MSVC 构建，并覆盖 Unicode 测试根路径。
 - Linux 测试注册已提取为共享 CTest 定义，发行版/CPU 复验只配置测试并执行 CTest。需实际验证。
 - 完善 CLI 错误分类、用户帮助与发布说明。
 
-`cpp23perview` 的 GCC 15 工作流改动仍保存在名为 `cpp23perview GCC15 workflow WIP` 的 stash 中，后续处理该分支时核对。
+`cpp23perview` 分支即将合并至此，合并时注意冲突解决。

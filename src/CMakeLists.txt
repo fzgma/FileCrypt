@@ -22,6 +22,7 @@ endif()
 # 密码能力独立于协议和应用层，当前后端使用 Botan 3。
 find_package(Botan 3 REQUIRED)
 add_library(filecrypt_crypto crypto/botan/crypto.cpp)
+target_sources(filecrypt_crypto PRIVATE crypto/botan/password_generator.cpp)
 add_library(FileCrypt::Crypto ALIAS filecrypt_crypto)
 target_include_directories(filecrypt_crypto PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(filecrypt_crypto PUBLIC Botan::Botan)

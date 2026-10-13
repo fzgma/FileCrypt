@@ -1,4 +1,5 @@
 #include <filecrypt/crypto/crypto.hpp>
+#include "password_generator_test.hpp"
 #include <filecrypt/format/v1/aad.hpp>
 #include <botan/hex.h>
 #include <botan/version.h>
@@ -269,6 +270,7 @@ void v1_aad_tests() {
 /// 执行全部密码层测试并报告测试结果。
 int main() {
     try {
+        test_password_generator::run();
         const Bytes password{'p', 'a', 's', 's', 0, 0xE4, 0xB8, 0xAD};
         auto salt = random_bytes(16);
         const Argon2idParameters parameters{8192, 1, 1};

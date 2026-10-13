@@ -1,3 +1,4 @@
+#include "password_command.hpp"
 #include <filecrypt/app/operations.hpp>
 #include <filecrypt/io/password.hpp>
 #include <charconv>
@@ -82,6 +83,7 @@ void print_usage() {
         "  filecrypt encrypt|-e <输入路径> <输出.fcry> [选项]\n"
         "  filecrypt decrypt|-d <输入.fcry> <输出路径> [资源上限]\n"
         "  filecrypt info|-i <文件路径>\n"
+        "  filecrypt password|-g [length 8-64] [charset alnum|readable|symbols]\n"
         "  filecrypt sample <文件路径> [algorithm|-a aes|xchacha] [directory] [compress|-z|no-compress]\n"
         "  filecrypt help|-h\n"
         "完整名称不带横线，简写带单横线；加解密的前两个参数固定为输入、输出路径。\n"
@@ -89,6 +91,8 @@ void print_usage() {
         "解密输出未指定后缀时补上记录的扩展名（含 tar.gz 等复合后缀）；Unknown 不补。\n"
         "加密选项：algorithm|-a aes|xchacha（默认 aes），compress|-z 或 no-compress（默认）\n"
         "算法值也接受 aes-256-gcm 和 xchacha20-poly1305。\n"
+        "password 默认生成 12 位字母数字密码；readable 排除易混淆字符，symbols 允许符号。\n"
+        "生成的密码只显示一次，不自动保存；可选择更长密码。\n"
         "加密参数：memory-kib N iterations N parallelism N\n"
         "资源上限：max-memory-kib N max-iterations N max-parallelism N\n"
         "解压上限：max-output-bytes N（默认 16 GiB），max-window-kib N（默认 65536）\n"
@@ -297,6 +301,10 @@ int run_cli(int argc, char** argv) {
     try {
         if (argc == 2 && (std::string_view(argv[1]) == "help" || std::string_view(argv[1]) == "-h")) {
             print_usage();
+            return 0;
+        }
+        if (argc >= 2 && (std::string_view(argv[1]) == "password" || std::string_view(argv[1]) == "-g")) {
+            filecrypt::cli::generate_password_command(argc, argv);
             return 0;
         }
         if (argc < 3) {

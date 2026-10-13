@@ -1,5 +1,6 @@
 # 正式程序独立于单元测试，保持可执行文件位于 build 根目录。
 add_executable(filecrypt main.cpp ../platform/password.cpp)
+target_sources(filecrypt PRIVATE password_command.cpp)
 target_link_libraries(filecrypt PRIVATE FileCrypt::App)
 if(MINGW)
     target_link_options(filecrypt PRIVATE -municode)
