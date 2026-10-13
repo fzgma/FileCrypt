@@ -5,7 +5,6 @@ source "${BASH_SOURCE[0]%/*}/utf8-locale.sh"
 
 export PATH="/opt/python/cp312-cp312/bin:$PATH"
 source .github/scripts/setup-gcc15.sh
-python -m pip install --disable-pip-version-check cmake==3.31.6 ninja==1.11.1.3
 
 mkdir -p build/toolchain
 "$CXX" -std=c++23 -DFILECRYPT_REQUIRE_GCC15=1 -O2 -march=x86-64 -mtune=generic \
@@ -14,46 +13,13 @@ mkdir -p build/toolchain
 build/toolchain/cpp23-probe
 python .github/scripts/check-linux-elf.py build/toolchain/cpp23-probe
 
-botan_version=3.13.0
-botan_sha256=12f5a8358890bbee82edfe9d2e7769b0a610b6dd0e0698aea13d20a675d84620
-mkdir -p build/deps
-curl --fail --location --retry 3 "https://botan.randombit.net/releases/Botan-$botan_version.tar.xz" \
-    -o build/deps/botan.tar.xz
-echo "$botan_sha256  build/deps/botan.tar.xz" | sha256sum --check
-tar -xf build/deps/botan.tar.xz -C build/deps
-botan_source="$PWD/build/deps/Botan-$botan_version"
-botan_prefix="$PWD/build/deps/botan-install"
-
-# 依赖也从源码构建；不引入发行版预编译的 v2 库，优化算法由 Botan 运行时探测 CPU。
-(
-    cd "$botan_source"
-    python configure.py --prefix="$botan_prefix" --libdir=lib \
-        --cc=gcc --cc-bin="$CXX" --cpu=x86_64 --os=linux --build-targets=static \
-        --extra-cxxflags="-march=x86-64 -mtune=generic" \
-        --minimized-build \
-        --enable-modules=aes,gcm,chacha20poly1305,argon2,auto_rng,system_rng,entropy,locking_allocator,cpuid,aes_ni,ghash_cpu,chacha_simd32,argon2_avx2
-    make -j2
-    make install
-)
-# Zstandard 同样从固定源码构建静态库，不增加发布文件的共享库依赖。
-zstd_version=1.5.7
-zstd_sha256=eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
-curl --fail --location --retry 3 \
-    "https://github.com/facebook/zstd/releases/download/v$zstd_version/zstd-$zstd_version.tar.gz" \
-    -o build/deps/zstd.tar.gz
-echo "$zstd_sha256  build/deps/zstd.tar.gz" | sha256sum --check
-tar -xf build/deps/zstd.tar.gz -C build/deps
-zstd_prefix="$PWD/build/deps/zstd-install"
-cmake --fresh -S "build/deps/zstd-$zstd_version/build/cmake" -B build/deps/zstd-build -G Ninja \
-    "-DCMAKE_C_COMPILER=$CC" "-DCMAKE_CXX_COMPILER=$CXX" \
-    "-DCMAKE_AR=$AR" "-DCMAKE_RANLIB=$RANLIB" \
-    -DCMAKE_C_STANDARD=17 -DCMAKE_C_STANDARD_REQUIRED=ON \
-    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$zstd_prefix" -DCMAKE_INSTALL_LIBDIR=lib \
-    -DCMAKE_POSITION_INDEPENDENT_CODE=ON '-DCMAKE_C_FLAGS=-march=x86-64 -mtune=generic' \
-    -DZSTD_BUILD_SHARED=OFF -DZSTD_BUILD_STATIC=ON -DZSTD_BUILD_PROGRAMS=OFF \
-    -DZSTD_BUILD_TESTS=OFF -DZSTD_MULTITHREAD_SUPPORT=OFF -DZSTD_LEGACY_SUPPORT=OFF
-cmake --build build/deps/zstd-build --parallel 2
-cmake --install build/deps/zstd-build
+# 依赖来自已准备的环境镜像，保持安装前缀稳定，避免缓存中的绝对路径失效。
+deps_prefix="${FILECRYPT_DEPS_PREFIX:?请使用已准备的 Linux 构建环境镜像}"
+source "$deps_prefix/versions.env"
+botan_prefix="$deps_prefix/botan-install"
+zstd_prefix="$deps_prefix/zstd-install"
+test -s "$botan_prefix/lib/libbotan-3.a"
+test -s "$zstd_prefix/lib/libzstd.a"
 export PKG_CONFIG_PATH="$botan_prefix/lib/pkgconfig:$zstd_prefix/lib/pkgconfig"
 cmake --fresh -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
     "-DCMAKE_CXX_COMPILER=$CXX" "-DCMAKE_AR=$AR" "-DCMAKE_RANLIB=$RANLIB" \

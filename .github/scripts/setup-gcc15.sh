@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# 由 build-linux.sh source，在 AlmaLinux 8/manylinux 底座内选择完整的 GCC 15 工具链。
+# 在已准备的 AlmaLinux 8/manylinux 环境中选择并检查 GCC 15 工具链。
 set -euo pipefail
 
 filecrypt_toolchain_prefix=/opt/rh/gcc-toolset-15/root/usr
-dnf install -y gcc-toolset-15-gcc gcc-toolset-15-gcc-c++ \
-    gcc-toolset-15-libstdc++-devel gcc-toolset-15-binutils
 export PATH="$filecrypt_toolchain_prefix/bin:$PATH"
 export LD_LIBRARY_PATH="$filecrypt_toolchain_prefix/lib64:$filecrypt_toolchain_prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export CC="$filecrypt_toolchain_prefix/bin/gcc"
