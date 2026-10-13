@@ -1,4 +1,5 @@
 #include <filecrypt/format/v1/header.hpp>
+#include "../../../src/utils/little_endian.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,6 +10,23 @@
 
 namespace {
 using namespace filecrypt::format::v1;
+
+static_assert(!filecrypt::utils::LittleEndianInteger<bool>);
+static_assert(!filecrypt::utils::LittleEndianInteger<std::int32_t>);
+
+/// 使用非零偏移和独立字节序列核对公共工具的四种宽度，保留相邻哨兵字节。
+template<filecrypt::utils::LittleEndianInteger Integer>
+void test_integer_codec(Integer value) {
+    constexpr std::array expected{std::byte{0x08}, std::byte{0x07}, std::byte{0x06}, std::byte{0x05},
+        std::byte{0x04}, std::byte{0x03}, std::byte{0x02}, std::byte{0x01}};
+    std::array<std::byte, sizeof(Integer) + 2> bytes;
+    bytes.fill(std::byte{0xA5});
+    filecrypt::utils::write_le(bytes, 1, value);
+    if (bytes.front() != std::byte{0xA5} || bytes.back() != std::byte{0xA5} ||
+        !std::equal(expected.begin(), expected.begin() + sizeof(Integer), bytes.begin() + 1) ||
+        filecrypt::utils::read_le<Integer>(bytes, 1) != value)
+        throw std::runtime_error("Shared integer codec vector or boundary mismatch");
+}
 
 /// 条件不满足时抛出包含失败原因的测试异常。
 void require(bool condition, const char* message) {
@@ -113,6 +131,10 @@ void test_invalid_inputs() {
 /// 运行全部 Header 测试并通过退出码报告结果。
 int main() {
     try {
+        test_integer_codec(std::uint8_t{0x08});
+        test_integer_codec(std::uint16_t{0x0708});
+        test_integer_codec(std::uint32_t{0x05060708});
+        test_integer_codec(std::uint64_t{0x0102030405060708});
         test_fixed_vector();
         test_flags();
         test_boundaries();

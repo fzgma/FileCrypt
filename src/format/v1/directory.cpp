@@ -1,5 +1,7 @@
 #include <filecrypt/format/v1/directory.hpp>
+#include "../../utils/little_endian.hpp"
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <ranges>
 #include <set>
@@ -12,16 +14,18 @@ namespace {
 void require(bool condition, const char* text) {
     if (!condition) throw std::invalid_argument(text);
 }
-/// 将固定宽度无符号整数逐字节追加为小端字段。
-template<class T> void put(std::vector<std::byte>& out, T value) {
-    for (std::size_t i = 0; i < sizeof(T); ++i) out.push_back(static_cast<std::byte>((value >> (8 * i)) & 255));
+/// 复用整数编码核心，再按原字段宽度追加目录字节。
+template<utils::LittleEndianInteger T> void put(std::vector<std::byte>& out, T value) {
+    std::array<std::byte, sizeof(T)> bytes{};
+    utils::write_le(bytes, 0, value);
+    out.append_range(bytes);
 }
 /// 检查剩余长度后读取小端字段，并推进解析位置。
-template<class T> T get(std::span<const std::byte> bytes, std::size_t& pos) {
-    require(sizeof(T) <= bytes.size() - pos, "Truncated directory Entry");
-    std::uint64_t value{};
-    for (std::size_t i = 0; i < sizeof(T); ++i) value |= std::to_integer<std::uint64_t>(bytes[pos++]) << (8 * i);
-    return static_cast<T>(value);
+template<utils::LittleEndianInteger T> T get(std::span<const std::byte> bytes, std::size_t& pos) {
+    require(pos <= bytes.size() && sizeof(T) <= bytes.size() - pos, "Truncated directory Entry");
+    const auto value = utils::read_le<T>(bytes, pos);
+    pos += sizeof(T);
+    return value;
 }
 }
 

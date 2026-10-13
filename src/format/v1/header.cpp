@@ -1,30 +1,12 @@
 #include <filecrypt/format/v1/header.hpp>
+#include "../../utils/little_endian.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 
 namespace filecrypt::format::v1 {
-namespace {
-
-/// 将无符号整数按小端顺序写入指定偏移。
-template <typename Integer>
-void write_le(std::span<std::byte> data, std::size_t offset, Integer value) {
-    for (std::size_t i = 0; i < sizeof(Integer); ++i) {
-        data[offset + i] = static_cast<std::byte>((value >> (8 * i)) & 0xFFu);
-    }
-}
-
-/// 从指定偏移读取小端编码的无符号整数。
-template <typename Integer>
-Integer read_le(std::span<const std::byte> data, std::size_t offset) {
-    std::uint64_t value{};
-    for (std::size_t i = 0; i < sizeof(Integer); ++i) {
-        value |= std::to_integer<std::uint64_t>(data[offset + i]) << (8 * i);
-    }
-    return static_cast<Integer>(value);
-}
-
-} // namespace
+using utils::read_le;
+using utils::write_le;
 
 /// 按协议规定的偏移将 Header 编码为 32 字节。
 std::array<std::byte, header_size> serialize(const Header& header) {

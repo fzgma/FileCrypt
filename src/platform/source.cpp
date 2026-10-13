@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <vector>
+#include <utility>
 #ifdef _WIN32
     #ifndef WIN32_LEAN_AND_MEAN
         #define WIN32_LEAN_AND_MEAN
@@ -10,6 +11,7 @@
         #define NOMINMAX
     #endif
     #include <windows.h>
+    #include "../utils/win32_resource.hpp"
 #else
     #include <cerrno>
     #include <fcntl.h>
@@ -47,11 +49,10 @@ SourceSnapshot from_stat(const struct stat& info) {
 /// 不跟随末级链接读取源对象快照，供扫描与读取前后复核。
 SourceSnapshot inspect_source(const std::filesystem::path& path) {
 #ifdef _WIN32
-    const auto handle = CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
-    if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot inspect source");
-    try { const auto value = from_handle(handle); CloseHandle(handle); return value; }
-    catch (...) { CloseHandle(handle); throw; }
+    const utils::UniqueFileHandle handle(CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (!handle) throw std::runtime_error("Cannot inspect source");
+    return from_handle(handle.get());
 #else
     struct stat info{};
     if (lstat(path.c_str(), &info) != 0) throw std::runtime_error("Cannot inspect source");
@@ -91,13 +92,9 @@ struct SourceFile::Impl {
     std::filesystem::path path;
     SourceSnapshot expected;
 #ifdef _WIN32
-    HANDLE handle{INVALID_HANDLE_VALUE};
-    std::vector<HANDLE> ancestors;
-    /// 释放源文件及全部祖先目录句柄。
-    ~Impl() {
-        if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
-        for (const auto ancestor : ancestors) CloseHandle(ancestor);
-    }
+    // 成员按声明逆序析构，先关闭源文件，再释放阻止祖先替换的目录句柄。
+    std::vector<utils::UniqueFileHandle> ancestors;
+    utils::UniqueFileHandle handle;
 #else
     int descriptor{-1};
     /// 关闭仍由源文件持有的 POSIX 描述符。
@@ -106,7 +103,7 @@ struct SourceFile::Impl {
     /// 从已打开的文件对象读取快照，不重新解析其路径。
     SourceSnapshot snapshot() const {
 #ifdef _WIN32
-        return from_handle(handle);
+        return from_handle(handle.get());
 #else
         struct stat info{};
         if (fstat(descriptor, &info) != 0) throw std::runtime_error("Cannot inspect open source");
@@ -127,22 +124,21 @@ SourceFile::SourceFile(const std::filesystem::path& path, const SourceSnapshot& 
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
     auto ancestor_path = absolute.root_path();
     auto open_ancestor = [&] {
-        const auto ancestor = CreateFileW(ancestor_path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
-            nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
-        if (ancestor == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot lock source ancestor");
-        try {
-            if (!from_handle(ancestor).directory) throw std::runtime_error("Invalid source ancestor");
-            impl_->ancestors.push_back(ancestor);
-        } catch (...) { CloseHandle(ancestor); throw; }
+        utils::UniqueFileHandle ancestor(CreateFileW(ancestor_path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+            nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+        if (!ancestor) throw std::runtime_error("Cannot lock source ancestor");
+        if (!from_handle(ancestor.get()).directory) throw std::runtime_error("Invalid source ancestor");
+        // 扩容失败时局部所有者仍会关闭；成功后锁随容器存活。
+        impl_->ancestors.push_back(std::move(ancestor));
     };
     if (!absolute.root_name().native().starts_with(L"\\\\")) open_ancestor();
     for (const auto& component : absolute.parent_path().relative_path()) {
         if (component.empty()) continue;
         ancestor_path /= component; open_ancestor();
     }
-    impl_->handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-    if (impl_->handle == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot exclusively read source file");
+    impl_->handle.reset(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
+    if (!impl_->handle) throw std::runtime_error("Cannot exclusively read source file");
 #else
     // openat 锚定各级目录；并发替换路径组件也不能把读操作重定向到链接目标。
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
@@ -169,7 +165,7 @@ std::size_t SourceFile::read(std::span<std::byte> bytes) {
     const auto size = std::min(bytes.size(), std::size_t{65536});
 #ifdef _WIN32
     DWORD count{};
-    if (!ReadFile(impl_->handle, bytes.data(), static_cast<DWORD>(size), &count, nullptr)) throw std::runtime_error("Source file read failed");
+    if (!ReadFile(impl_->handle.get(), bytes.data(), static_cast<DWORD>(size), &count, nullptr)) throw std::runtime_error("Source file read failed");
     return count;
 #else
     ssize_t count;

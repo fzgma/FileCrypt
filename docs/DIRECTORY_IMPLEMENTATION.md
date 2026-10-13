@@ -57,6 +57,8 @@ Windows 暂存目录使用受保护、可继承的所有者/SYSTEM DACL，文件
 
 Windows 使用不带覆盖标志的 MoveFileExW；Linux 使用 `renameat2(RENAME_NOREPLACE)`，避免普通 rename 替换已存在的空目录。若内核或文件系统不支持此操作，明确失败，不降级为存在竞态的检查后 rename。清理不跟随 symlink/reparse point。
 
+Windows 目录移动遇到访问拒绝或共享冲突时，最多尝试十次，相邻尝试等待 50 ms，以容忍短暂占用。每次尝试前重新复核暂存根身份；目标已存在、身份变化或其他错误不继续等待，持续拒绝最终仍报错。此策略不修改权限，不增加覆盖或跨卷复制选项。共用实现位于 `src/utils/win32_directory_move.hpp`，目录测试夹具的移动也使用该逻辑。
+
 ## 平台名称与冲突
 
 格式层的名称合法性独立于平台规则。恢复到 Windows 时拒绝非法字符、控制字符、末尾空格/句点、保留设备名（含 COM/LPT 的上标数字变体）等；不自动改写名称。归档原始 Root Name 不用于目标路径，不施加目标平台名称限制。

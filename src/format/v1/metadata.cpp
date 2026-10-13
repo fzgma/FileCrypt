@@ -1,5 +1,6 @@
 #include <filecrypt/format/v1/metadata.hpp>
 #include <filecrypt/format/v1/registry.hpp>
+#include "../../utils/little_endian.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -43,24 +44,14 @@ void validate_parameters(const Argon2idParameters& parameters) {
         "Argon2 内存成本必须至少为并行度的 8 倍 KiB");
 }
 
-/// 将无符号整数写入指定位置的小端字段。
-template <typename Integer>
-void write_le(std::span<std::byte> data, std::size_t offset, Integer value) {
-    for (std::size_t i = 0; i < sizeof(Integer); ++i) {
-        data[offset + i] = static_cast<std::byte>((value >> (8 * i)) & 0xFFu);
-    }
-}
+using utils::write_le;
 
 /// 确认字段未截断后读取指定位置的小端整数。
-template <typename Integer>
+template <utils::LittleEndianInteger Integer>
 Integer read_le(std::span<const std::byte> data, std::size_t offset) {
     check(offset <= data.size() && sizeof(Integer) <= data.size() - offset,
         "Metadata 字段被截断");
-    std::uint64_t value{};
-    for (std::size_t i = 0; i < sizeof(Integer); ++i) {
-        value |= std::to_integer<std::uint64_t>(data[offset + i]) << (8 * i);
-    }
-    return static_cast<Integer>(value);
+    return utils::read_le<Integer>(data, offset);
 }
 }
 

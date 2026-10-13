@@ -11,6 +11,9 @@
 #include <cstdio>
 #include "fixture.hpp"
 #include "inspect_test.hpp"
+#ifdef _WIN32
+    #include "../platform/win32_resource_test.hpp"
+#endif
 
 namespace {
 using namespace filecrypt;
@@ -422,6 +425,9 @@ int main(int argc, char** argv) {
         check(argc == 2, "Missing test directory");
         const auto directory = test_fixture::create(argv[1]);
         test_inspect::run(directory);
+#ifdef _WIN32
+        test_win32_resource::run(directory);
+#endif
         file_tests(directory);
         compressed_file_tests(directory);
         transaction_tests(directory);

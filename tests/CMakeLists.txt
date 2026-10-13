@@ -31,6 +31,9 @@ endforeach()
 add_custom_target(unit_tests DEPENDS ${unit_test_targets})
 
 add_executable(file_crypt_test app/file_crypt_test.cpp app/inspect_test.cpp)
+if(WIN32)
+    target_sources(file_crypt_test PRIVATE platform/win32_resource_test.cpp)
+endif()
 target_link_libraries(file_crypt_test PRIVATE FileCrypt::App FileCrypt::IO FileCrypt::Format)
 set_target_properties(file_crypt_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/integration")

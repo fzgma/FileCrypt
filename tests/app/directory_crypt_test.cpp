@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <system_error>
 #include "fixture.hpp"
 #ifdef _WIN32
     #ifndef WIN32_LEAN_AND_MEAN
@@ -20,6 +21,7 @@
         #define NOMINMAX
     #endif
     #include <windows.h>
+    #include "../../src/utils/win32_directory_move.hpp"
 #else
     #include <sys/stat.h>
 #endif
@@ -243,7 +245,17 @@ void tests(const std::filesystem::path& base) {
         io::DirectoryTransaction transaction(output);
         replaced = transaction.root();
         write(replaced / "owned", "private");
+#ifdef _WIN32
+        const auto original = io::inspect_source(replaced);
+        const auto error = utils::move_directory_no_replace(replaced, moved, [&] {
+            const auto current = io::inspect_source(replaced);
+            check(current.directory && current.device == original.device && current.identity == original.identity,
+                "Fixture directory was replaced before rename");
+        });
+        if (error != ERROR_SUCCESS) throw std::system_error(static_cast<int>(error), std::system_category(), "Fixture directory rename failed");
+#else
         std::filesystem::rename(replaced, moved);
+#endif
         std::filesystem::create_directory(replaced);
         write(replaced / "unrelated", "keep");
         rejects([&] { transaction.commit(); });
