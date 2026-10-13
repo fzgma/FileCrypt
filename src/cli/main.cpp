@@ -93,6 +93,7 @@ void print_usage() {
         "  filecrypt encrypt|-e <输入路径> <输出.fcry> [选项]\n"
         "  filecrypt decrypt|-d <输入.fcry> <输出路径> [资源上限]\n"
         "  filecrypt info|-i <文件路径>\n"
+        "  filecrypt verify <加密文件路径> [资源上限]\n"
         "  filecrypt password|-g [length 8-64] [charset alnum|readable|symbols]\n"
         "  filecrypt sample <文件路径> [algorithm|-a aes|xchacha] [directory] [compress|-z|no-compress]\n"
         "  filecrypt help|-h\n"
@@ -111,6 +112,7 @@ void print_usage() {
         "目录上限：max-index-bytes N max-entries N max-name-bytes N max-depth N max-archive-bytes N\n"
         "解密自动读取算法和布局，不接受算法或压缩选项；拒绝覆盖已有输出。\n"
         "sample 仅生成 Header 与 Metadata 格式示例，不执行加密。\n");
+    std::println("verify 输入一次密码，完整验证认证、压缩数据和目录结构，不生成恢复文件；压缩或目录验证需要临时空间。");
 }
 
 /// 将文件路径的末级文件名转换为 UTF-8 输出文本。
@@ -289,8 +291,8 @@ const OptionSpec* find_option(std::string_view name) {
 void parse_file_options(bool encrypting, int argc, char** argv,
     filecrypt::app::EncryptOptions& options,
     filecrypt::compression::DecompressionLimits& decompression_limits,
-    std::set<std::string_view>& seen) {
-    for (int i = 4; i < argc; ++i) {
+    std::set<std::string_view>& seen, int first_option = 4) {
+    for (int i = first_option; i < argc; ++i) {
         const auto name = std::string_view(argv[i]);
         const auto* spec = find_option(name);
         if (!spec || (spec->encrypt_only && !encrypting) ||
@@ -384,6 +386,21 @@ void crypt_file(bool encrypting, int argc, char** argv) {
         std::println("解密完成（认证通过）：{}", display_filename(restored));
     }
 }
+/// 验证复用解密资源选项，只接受一个输入路径，成功后才报告通过。
+void verify_file(int argc, char** argv) {
+    filecrypt::app::EncryptOptions options;
+    filecrypt::compression::DecompressionLimits decompression_limits;
+    std::set<std::string_view> seen;
+    parse_file_options(false, argc, argv, options, decompression_limits, seen, 3);
+    if (seen.contains("max-output-bytes")) options.directory_limits.max_output_bytes =
+        std::min(options.directory_limits.max_output_bytes, decompression_limits.max_output_bytes);
+    auto password = filecrypt::io::read_password("密码：");
+    if (password.empty()) throw std::invalid_argument("密码不能为空");
+    filecrypt::app::verify_file(ciphertext_path(argument_path(argv[2])), password,
+        options.limits, decompression_limits, options.directory_limits);
+    password.clear();
+    std::println("验证通过。");
+}
 } //namespace
 
 /// 分派完整或简写命令并将失败转换为非零退出码。
@@ -410,6 +427,8 @@ int run_cli(int argc, char** argv) {
                 return 1;
             }
             print_info(path, *info);
+        } else if (command == "verify") {
+            verify_file(argc, argv);
         } else if (command == "sample") {
             generate_sample(path, argc, argv);
         } else if (command == "encrypt" || command == "-e" || command == "decrypt" || command == "-d") {

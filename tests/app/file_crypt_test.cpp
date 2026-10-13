@@ -1,3 +1,4 @@
+#include "verify_test.hpp"
 #include <filecrypt/app/operations.hpp>
 #include <filecrypt/io/file.hpp>
 #include <filecrypt/io/output.hpp>
@@ -425,6 +426,7 @@ int main(int argc, char** argv) {
         check(argc == 2, "Missing test directory");
         const auto directory = test_fixture::create(argv[1]);
         test_inspect::run(directory);
+        test_verify::run(directory);
 #ifdef _WIN32
         test_win32_resource::run(directory);
 #endif

@@ -10,6 +10,8 @@ class OutputTransaction {
 public:
     /// 在目标同目录排他创建受控临时文件，拒绝已有目标。
     explicit OutputTransaction(const std::filesystem::path& destination);
+    /// 在系统临时目录创建不可提交的受限暂存文件，关闭时自动删除。
+    [[nodiscard]] static std::unique_ptr<OutputTransaction> create_temporary();
     /// 关闭文件并清理尚未提交的临时输出。
     ~OutputTransaction();
     /// 禁止复制输出事务的所有权。
@@ -27,6 +29,8 @@ public:
     /// 刷新并关闭输出，将其提交到不存在的目标路径。
     void commit();
 private:
+    /// 共用权限与排他创建逻辑；临时模式的路径表示暂存目录。
+    OutputTransaction(const std::filesystem::path& path, bool temporary_only);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

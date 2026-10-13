@@ -1,4 +1,5 @@
 #include <filecrypt/format/v1/directory.hpp>
+#include <filecrypt/error.hpp>
 #include "../../utils/little_endian.hpp"
 #include <algorithm>
 #include <array>
@@ -12,7 +13,11 @@ namespace filecrypt::format::v1 {
 namespace {
 /// 条件不成立时报告目录格式或运行上限校验失败。
 void require(bool condition, const char* text) {
-    if (!condition) throw std::invalid_argument(text);
+    if (!condition) throw FormatError(text);
+}
+/// 将运行策略超限与目录结构错误区分，保持原 invalid_argument 基类。
+void require_policy(bool condition, const char* text) {
+    if (!condition) throw FormatError(text, ErrorCode::resource_limit);
 }
 /// 复用整数编码核心，再按原字段宽度追加目录字节。
 template<utils::LittleEndianInteger T> void put(std::vector<std::byte>& out, T value) {
@@ -42,7 +47,7 @@ void validate_entry_name(std::string_view name) {
         if (first >= 0xC2 && first <= 0xDF) { length = 1; code = first & 31; minimum = 0x80; }
         else if (first >= 0xE0 && first <= 0xEF) { length = 2; code = first & 15; minimum = 0x800; }
         else if (first >= 0xF0 && first <= 0xF4) { length = 3; code = first & 7; minimum = 0x10000; }
-        else throw std::invalid_argument("Invalid UTF-8 directory Name");
+        else throw FormatError("Invalid UTF-8 directory Name");
         require(length <= name.size() - i, "Truncated UTF-8 directory Name");
         while (length--) {
             const auto next = static_cast<unsigned char>(name[i++]);
@@ -57,7 +62,8 @@ void validate_entry_name(std::string_view name) {
 
 /// 校验有序 ID、名称、连续数据及完整父链，返回 File Data 总长度。
 std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const directory::Limits& limits) {
-    require(!entries.empty() && entries.size() <= limits.max_entries, "Directory Entry count exceeds policy or is empty");
+    require(!entries.empty(), "Directory Index is empty");
+    require_policy(entries.size() <= limits.max_entries, "Directory Entry count exceeds policy");
     require(entries[0].id == 0 && entries[0].parent_id == 0xFFFFFFFF && entries[0].type == EntryType::directory,
         "Invalid directory Root Entry");
     // 所有二分查找都以整个范围有序为前提，必须先验证完整 ID 序列。
@@ -68,11 +74,11 @@ std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const dire
     std::uint64_t data_size{}, encoded_size{};
     for (const auto [i, entry] : entries | std::views::enumerate) {
         validate_entry_name(entry.name);
-        require(entry.name.size() <= limits.max_name_bytes, "Directory Name exceeds policy");
+        require_policy(entry.name.size() <= limits.max_name_bytes, "Directory Name exceeds policy");
         auto n = entry.name.size();
         std::uint64_t size = 26 + n + 1;
         while (n >= 128) { ++size; n >>= 7; }
-        require(encoded_size <= limits.max_index_bytes && size <= limits.max_index_bytes - encoded_size,
+        require_policy(encoded_size <= limits.max_index_bytes && size <= limits.max_index_bytes - encoded_size,
             "Directory Index exceeds policy");
         encoded_size += size;
         if (i) require(names.emplace(entry.parent_id, entry.name).second, "Duplicate sibling Name");
@@ -92,7 +98,7 @@ std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const dire
             parents[i] = static_cast<std::size_t>(parent - entries.begin());
         }
     }
-    require(encoded_size <= limits.max_output_bytes && data_size <= limits.max_output_bytes - encoded_size,
+    require_policy(encoded_size <= limits.max_output_bytes && data_size <= limits.max_output_bytes - encoded_size,
         "Directory archive output exceeds policy");
     // 迭代遍历父链，允许父节点 ID 晚于子节点，不使用无界递归。
     std::vector<unsigned char> state(entries.size());
@@ -105,14 +111,14 @@ std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const dire
         while (state[node] == 0) {
             state[node] = 1;
             chain.push_back(node);
-            require(chain.size() <= limits.max_depth, "Directory depth exceeds policy");
+            require_policy(chain.size() <= limits.max_depth, "Directory depth exceeds policy");
             node = parents[node];
         }
         require(state[node] == 2, "Cycle in directory tree");
         auto depth = depths[node];
         while (!chain.empty()) {
             node = chain.back(); chain.pop_back();
-            require(depth < limits.max_depth, "Directory depth exceeds policy");
+            require_policy(depth < limits.max_depth, "Directory depth exceeds policy");
             depths[node] = ++depth;
             state[node] = 2;
         }
@@ -124,7 +130,7 @@ std::uint64_t validate_index(std::span<const DirectoryEntry> entries, const dire
 std::vector<std::byte> serialize_index(std::span<const DirectoryEntry> entries, const directory::Limits& limits) {
     const auto encoded_size = validate_index(entries, limits);
     std::vector<std::byte> bytes;
-    require(encoded_size <= bytes.max_size(), "Directory Index exceeds container capacity");
+    require_policy(encoded_size <= bytes.max_size(), "Directory Index exceeds container capacity");
     bytes.reserve(static_cast<std::size_t>(encoded_size));
     for (const auto& entry : entries) {
         put(bytes, entry.id); put(bytes, entry.parent_id); put(bytes, std::to_underlying(entry.type));
@@ -139,8 +145,8 @@ std::vector<std::byte> serialize_index(std::span<const DirectoryEntry> entries, 
 /// 在运行上限内解析 Index，并核对树结构和实际 File Data 长度。
 std::vector<DirectoryEntry> deserialize_index(std::span<const std::byte> bytes, std::uint64_t file_data_length,
     const directory::Limits& limits) {
-    require(bytes.size() <= limits.max_index_bytes, "Directory Index exceeds policy");
-    require(bytes.size() <= limits.max_output_bytes && file_data_length <= limits.max_output_bytes - bytes.size(),
+    require_policy(bytes.size() <= limits.max_index_bytes, "Directory Index exceeds policy");
+    require_policy(bytes.size() <= limits.max_output_bytes && file_data_length <= limits.max_output_bytes - bytes.size(),
         "Directory archive exceeds output policy");
     std::vector<DirectoryEntry> entries;
     // 每个条目至少包含固定字段和一个字节的 Name Length，限制初始容量上界。
@@ -148,7 +154,7 @@ std::vector<DirectoryEntry> deserialize_index(std::span<const std::byte> bytes, 
     entries.reserve(static_cast<std::size_t>(capacity));
     std::size_t position{};
     while (position < bytes.size()) {
-        require(entries.size() < limits.max_entries, "Directory Entry count exceeds policy");
+        require_policy(entries.size() < limits.max_entries, "Directory Entry count exceeds policy");
         DirectoryEntry entry;
         entry.id = get<std::uint32_t>(bytes, position); entry.parent_id = get<std::uint32_t>(bytes, position);
         entry.type = static_cast<EntryType>(get<std::uint16_t>(bytes, position));
@@ -164,7 +170,8 @@ std::vector<DirectoryEntry> deserialize_index(std::span<const std::byte> bytes, 
             if (!(value & 128)) break;
             shift += 7;
         }
-        require(length <= limits.max_name_bytes && length <= bytes.size() - position, "Invalid or oversized Name Length");
+        require(length <= bytes.size() - position, "Invalid Name Length");
+        require_policy(length <= limits.max_name_bytes, "Directory Name exceeds policy");
         entry.name.assign(reinterpret_cast<const char*>(bytes.data() + position), static_cast<std::size_t>(length));
         position += static_cast<std::size_t>(length);
         entries.push_back(std::move(entry));

@@ -73,6 +73,7 @@ Linux 随后审计正式程序和测试程序的 ELF：
 
 矩阵按 2026 年 10 月的维护状态选取；版本进入 EOL 后移除或替换，不以付费延长支持作为正式支持前提。
 额外在 Ubuntu 22.04 中使用 QEMU `qemu64` CPU 执行同样测试，检查不满足完整 x86-64-v2 的机器路径。
+素材测试在 QEMU 基线复验中允许 360 秒，原生环境仍为 180 秒；测试内容与算法组合保持一致。
 容器测试共用宿主内核，不代表已经验证所有历史内核或所有 CPU；原生机器的实际测试仍有价值。
 
 只有上述 Linux 验证全部通过后才上传 `filecrypt-linux-x86_64` Artifact，保留 14 天，
@@ -85,7 +86,7 @@ Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即�
 
 工作流使用 checkout v7.0.1、upload-artifact v7.0.2、download-artifact v8.0.1，均使用 Node 24。上传显式设置 `archive: true` 保留命名 ZIP Artifact，下载使用默认解压和摘要校验，只从同次运行获取产物。
 
-本轮目录素材、UTF-8 locale、发行版矩阵及 CPU 模拟验证已由用户确认完成。环境镜像缓存改造的远端验证尚未完成，范围见 [TODO](TODO.md)。
+main 合并提交 `daf3efb` 的远端构建、发行版矩阵及 CPU 模拟验证已由用户确认全部通过。缓存命中、周期刷新和耗时比较需按对应运行记录确认；verify 新增功能的验证范围见 [TODO](TODO.md)。
 
 ## 参考资料
 

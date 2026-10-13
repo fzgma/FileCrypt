@@ -28,5 +28,6 @@ test_runner=$(IFS=';'; echo "${runner[*]}")
 # 复验只配置测试；无需在最小发行版容器中安装 make 或 Ninja。
 cmake -S tests/runtime -B "$test_root" -G "Unix Makefiles" -DCMAKE_MAKE_PROGRAM=/bin/true \
     "-DFILECRYPT_BUILD_DIR=$PWD/build" "-DFILECRYPT_CLI=$filecrypt" \
+    "-DFILECRYPT_TEST_CPU_BASELINE=$([[ "${FILECRYPT_TEST_CPU:-}" == baseline ]] && echo ON || echo OFF)" \
     "-DFILECRYPT_TEST_RUNNER=$test_runner"
 ctest --test-dir "$test_root" --output-on-failure --no-tests=error

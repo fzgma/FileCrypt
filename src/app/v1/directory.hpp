@@ -34,6 +34,9 @@ private:
     std::uint64_t remaining_{};
     std::unique_ptr<io::SourceFile> file_;
 };
+/// 校验完整归档的索引与数据范围，不应用目标文件系统的名称限制。
+std::vector<format::v1::DirectoryEntry> validate_directory_payload(io::OutputTransaction& payload,
+    std::uint64_t index_length, const directory::Limits& limits);
 /// 从完整认证并按需解压的载荷恢复目录，结构校验与全部写入成功后提交。
 void restore_directory(io::OutputTransaction& payload, std::uint64_t index_length,
     const std::filesystem::path& output, const directory::Limits& limits);

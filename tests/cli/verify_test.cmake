@@ -1,0 +1,52 @@
+# 复用文件 CLI 夹具；将系统临时目录隔离，确认验证不会遗留输出。
+set(verify_temporary "${TEST_DIR}/verify-temporary")
+file(MAKE_DIRECTORY "${verify_temporary}")
+
+function(run_verify password_file expected expected_text)
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+        "TMPDIR=${verify_temporary}" "TMP=${verify_temporary}" "TEMP=${verify_temporary}"
+        "${FILECRYPT}" verify ${ARGN}
+        WORKING_DIRECTORY "${TEST_DIR}" INPUT_FILE "${TEST_DIR}/${password_file}"
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error ENCODING UTF-8)
+    if(NOT "${result}" STREQUAL "${expected}")
+        message(FATAL_ERROR "验证退出状态不符：${result}\n${error}")
+    endif()
+    if(expected EQUAL 0)
+        if(NOT output MATCHES "验证通过")
+            message(FATAL_ERROR "验证未报告成功")
+        endif()
+    else()
+        if(NOT output STREQUAL "" OR NOT error MATCHES "${expected_text}")
+            message(FATAL_ERROR "验证错误提示不符：${output}\n${error}")
+        endif()
+    endif()
+    file(GLOB temporary "${verify_temporary}/*" "${verify_temporary}/.*")
+    if(temporary)
+        message(FATAL_ERROR "验证遗留临时文件：${temporary}")
+    endif()
+endfunction()
+
+set(verify_input "${TEST_DIR}/验证 密文 🔐.fcry")
+run_success(encrypt-password.txt encrypt "${source}" "${verify_input}" compress
+    memory-kib 8192 iterations 1 parallelism 1)
+file(SHA256 "${verify_input}" verify_before)
+file(GLOB verify_tree_before "${TEST_DIR}/*" "${TEST_DIR}/.*")
+run_verify(decrypt-password.txt 0 "" "${TEST_DIR}/验证 密文 🔐")
+run_verify(wrong-password.txt 1 "认证失败" "${verify_input}")
+run_verify(decrypt-password.txt 1 "资源.*上限" "${verify_input}" max-memory-kib 4096)
+run_verify(decrypt-password.txt 1 "资源.*上限" "${verify_input}" max-output-bytes 1)
+run_verify(empty-password.txt 1 "密码不能为空" "${verify_input}")
+run_verify(empty-password.txt 1 "未知或不适用" "${verify_input}" algorithm aes)
+run_verify(empty-password.txt 1 "选项重复" "${verify_input}" max-memory-kib 8192 max-memory-kib 8192)
+run_verify(empty-password.txt 1 "选项缺少值" "${verify_input}" max-memory-kib)
+run_verify(empty-password.txt 1 "正的 32 位整数" "${verify_input}" max-memory-kib 0)
+run_verify(empty-password.txt 1 "未知或不适用" "${verify_input}" unexpected-output)
+# 临时目录不可用时，普通未压缩文件仍可验证；压缩验证应明确报告 IO 失败。
+set(verify_temporary "${TEST_DIR}/missing-temporary-directory")
+run_verify(decrypt-password.txt 0 "" "${TEST_DIR}/加密 文件 🔒-aes.fcry")
+run_verify(decrypt-password.txt 1 "临时" "${verify_input}")
+file(SHA256 "${verify_input}" verify_after)
+file(GLOB verify_tree_after "${TEST_DIR}/*" "${TEST_DIR}/.*")
+if(NOT verify_before STREQUAL verify_after OR NOT verify_tree_before STREQUAL verify_tree_after)
+    message(FATAL_ERROR "验证修改了输入或创建了最终输出")
+endif()

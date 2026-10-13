@@ -1,4 +1,5 @@
 #include <filecrypt/io/output.hpp>
+#include <filecrypt/error.hpp>
 #include <algorithm>
 #include <cstdio>
 #include <limits>
@@ -71,46 +72,62 @@ struct OutputTransaction::Impl {
 
 /// 为输出创建权限受限的独占临时文件，名称碰撞时重试。
 OutputTransaction::OutputTransaction(const std::filesystem::path& destination)
+    : OutputTransaction(destination, false) {}
+
+/// 创建只供内部读取的暂存文件，不要求输入文件所在目录可写。
+std::unique_ptr<OutputTransaction> OutputTransaction::create_temporary() {
+    return std::unique_ptr<OutputTransaction>(new OutputTransaction(std::filesystem::temp_directory_path(), true));
+}
+
+/// 复用排他创建及受限权限，临时模式由系统负责关闭后的删除。
+OutputTransaction::OutputTransaction(const std::filesystem::path& destination, bool temporary_only)
     : impl_(std::make_unique<Impl>()) {
-    if (std::filesystem::exists(destination)) {
+    if (!temporary_only && std::filesystem::exists(destination)) {
         throw std::runtime_error("Output already exists");
     }
-    impl_->destination = destination;
+    if (!temporary_only) impl_->destination = destination;
     std::random_device random;
     for (unsigned attempt = 0; attempt < 32; ++attempt) {
         const auto first = random();
         const auto second = random();
-        const auto candidate = destination.parent_path() / std::format(".filecrypt-{:x}{:x}.tmp", first, second);
+        const auto candidate = (temporary_only ? destination : destination.parent_path()) /
+            std::format(".filecrypt-{:x}{:x}.tmp", first, second);
 #ifdef _WIN32
         // 受保护的 DACL 只允许所有者和 SYSTEM 访问，避免继承宽松目录权限。
         utils::UniqueSecurityDescriptor descriptor;
         if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
                 L"D:P(A;;FA;;;OW)(A;;FA;;;SY)", SDDL_REVISION_1, std::out_ptr(descriptor), nullptr)) {
-            throw std::runtime_error("Cannot set temporary output permissions");
+            throw OperationError(ErrorCode::io_error, "无法设置临时文件权限");
         }
         SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), descriptor.get(), FALSE};
-        impl_->handle = CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE, 0, &attributes,
-            CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        impl_->handle = CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE | (temporary_only ? DELETE : 0),
+            0, &attributes, CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL | (temporary_only ? FILE_FLAG_DELETE_ON_CLOSE : 0), nullptr);
         const auto error = GetLastError();
         if (impl_->handle != INVALID_HANDLE_VALUE) {
-            impl_->temporary = candidate;
+            if (!temporary_only) impl_->temporary = candidate;
             return;
         }
         if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
-            throw std::runtime_error("Cannot create temporary output");
+            throw OperationError(ErrorCode::io_error, "无法创建临时文件");
         }
 #else
         impl_->descriptor = open(candidate.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600);
         if (impl_->descriptor >= 0) {
             impl_->temporary = candidate;
+            if (temporary_only) {
+                if (unlink(candidate.c_str()) != 0)
+                    throw OperationError(ErrorCode::io_error, "无法移除临时文件名称");
+                impl_->temporary.clear();
+            }
             return;
         }
         if (errno != EEXIST) {
-            throw std::runtime_error("Cannot create temporary output");
+            throw OperationError(ErrorCode::io_error, "无法创建临时文件");
         }
 #endif
     }
-    throw std::runtime_error("Cannot allocate unique temporary output");
+    throw OperationError(ErrorCode::io_error, "无法分配唯一的临时文件");
 }
 
 /// 释放事务并自动删除未提交的临时文件。
@@ -127,7 +144,7 @@ void OutputTransaction::write(std::span<const std::byte> bytes) {
         DWORD written{};
         if (!WriteFile(impl_->handle, bytes.data(), static_cast<DWORD>(size), &written, nullptr) ||
             written == 0) {
-            throw std::runtime_error("Temporary output write failed");
+            throw OperationError(ErrorCode::io_error, "临时文件写入失败");
         }
 #else
         const auto written = ::write(impl_->descriptor, bytes.data(), size);
@@ -135,7 +152,7 @@ void OutputTransaction::write(std::span<const std::byte> bytes) {
             continue;
         }
         if (written <= 0) {
-            throw std::runtime_error("Temporary output write failed");
+            throw OperationError(ErrorCode::io_error, "临时文件写入失败");
         }
 #endif
         bytes = bytes.subspan(static_cast<std::size_t>(written));
@@ -151,7 +168,7 @@ std::size_t OutputTransaction::read(std::span<std::byte> bytes) {
 #ifdef _WIN32
     DWORD count{};
     if (!ReadFile(impl_->handle, bytes.data(), static_cast<DWORD>(size), &count, nullptr)) {
-        throw std::runtime_error("Temporary output read failed");
+        throw OperationError(ErrorCode::io_error, "临时文件读取失败");
     }
     return count;
 #else
@@ -160,7 +177,7 @@ std::size_t OutputTransaction::read(std::span<std::byte> bytes) {
         count = ::read(impl_->descriptor, bytes.data(), size);
     } while (count < 0 && errno == EINTR);
     if (count < 0) {
-        throw std::runtime_error("Temporary output read failed");
+        throw OperationError(ErrorCode::io_error, "临时文件读取失败");
     }
     return static_cast<std::size_t>(count);
 #endif
@@ -175,12 +192,12 @@ void OutputTransaction::seek(std::uint64_t offset) {
     LARGE_INTEGER position;
     position.QuadPart = static_cast<LONGLONG>(offset);
     if (!SetFilePointerEx(impl_->handle, position, nullptr, FILE_BEGIN)) {
-        throw std::runtime_error("Output seek failed");
+        throw OperationError(ErrorCode::io_error, "临时文件定位失败");
     }
 #else
     if (offset > static_cast<std::uint64_t>(std::numeric_limits<off_t>::max()) ||
         lseek(impl_->descriptor, static_cast<off_t>(offset), SEEK_SET) < 0) {
-        throw std::runtime_error("Output seek failed");
+        throw OperationError(ErrorCode::io_error, "临时文件定位失败");
     }
 #endif
 }
@@ -190,17 +207,18 @@ std::uint64_t OutputTransaction::size() const {
     if (impl_->committed) throw std::logic_error("Output already committed");
 #ifdef _WIN32
     LARGE_INTEGER size{};
-    if (!GetFileSizeEx(impl_->handle, &size) || size.QuadPart < 0) throw std::runtime_error("Cannot measure temporary payload");
+    if (!GetFileSizeEx(impl_->handle, &size) || size.QuadPart < 0) throw OperationError(ErrorCode::io_error, "无法读取临时文件大小");
     return static_cast<std::uint64_t>(size.QuadPart);
 #else
     struct stat info{};
-    if (fstat(impl_->descriptor, &info) != 0 || info.st_size < 0) throw std::runtime_error("Cannot measure temporary payload");
+    if (fstat(impl_->descriptor, &info) != 0 || info.st_size < 0) throw OperationError(ErrorCode::io_error, "无法读取临时文件大小");
     return static_cast<std::uint64_t>(info.st_size);
 #endif
 }
 
 /// 刷新并发布已完成输出，提交竞态也不得覆盖已有目标。
 void OutputTransaction::commit() {
+    if (impl_->destination.empty()) throw std::logic_error("Temporary payload cannot be committed");
     if (impl_->committed) {
         throw std::logic_error("Output already committed");
     }

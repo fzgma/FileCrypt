@@ -1,4 +1,5 @@
 #include <filecrypt/compression/compression.hpp>
+#include <filecrypt/error.hpp>
 #include <zstd.h>
 #include <zstd_errors.h>
 #include <array>
@@ -20,11 +21,13 @@ struct Buffer {
 };
 
 /// 将 Zstandard 错误转换为资源超限或数据处理异常。
-std::size_t checked(std::size_t result) {
+std::size_t checked(std::size_t result, bool decoding = false) {
     if (ZSTD_isError(result)) {
         if (ZSTD_getErrorCode(result) == ZSTD_error_frameParameter_windowTooLarge) {
             throw std::length_error("Zstandard window exceeds runtime limit");
         }
+        if (ZSTD_getErrorCode(result) == ZSTD_error_memory_allocation) throw std::bad_alloc();
+        if (decoding) throw OperationError(ErrorCode::invalid_format, "压缩载荷无效或已损坏");
         throw std::runtime_error(std::string("Zstandard: ") + ZSTD_getErrorName(result));
     }
     return result;
@@ -97,7 +100,7 @@ void decompress(const Reader& read, const Writer& write, const DecompressionLimi
         std::size_t produced;
         do {
             ZSTD_outBuffer output{target.bytes.data(), target.bytes.size(), 0};
-            remaining = checked(ZSTD_decompressStream(context.get(), &output, &input));
+            remaining = checked(ZSTD_decompressStream(context.get(), &output, &input), true);
             produced = output.pos;
             // 累计上限跨帧保持，先减后比较避免 total + produced 溢出。
             if (produced > limits.max_output_bytes - total) {
@@ -110,7 +113,7 @@ void decompress(const Reader& read, const Writer& write, const DecompressionLimi
         } while (input.pos < input.size || (produced == target.bytes.size() && remaining != 0));
     }
     if (remaining != 0) {
-        throw std::runtime_error("Truncated or empty Zstandard stream");
+        throw OperationError(ErrorCode::invalid_format, "压缩载荷为空或被截断");
     }
 }
 }

@@ -21,3 +21,4 @@ ctest --test-dir build -C Release -R "^cli_directory_corpus$" --output-on-failur
 ```
 
 Windows Actions、Linux 构建容器及发行版/CPU 运行矩阵均执行此测试。素材补充正常目录往返覆盖；恶意 Index、链接、事务竞态和资源限制仍由现有测试验证。
+原生环境超时为 180 秒，QEMU CPU 基线环境为 360 秒，两者执行相同素材和四组往返。

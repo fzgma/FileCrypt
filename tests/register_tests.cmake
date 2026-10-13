@@ -31,7 +31,11 @@ set_tests_properties(cli_directory_crypt PROPERTIES LABELS "integration;smoke")
 add_test(NAME cli_directory_corpus COMMAND "${CMAKE_COMMAND}"
     "-DFILECRYPT=${filecrypt_command}" "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/corpus-test"
     -P "${FILECRYPT_TEST_SOURCE_DIR}/cli/corpus_test.cmake")
-set_tests_properties(cli_directory_corpus PROPERTIES LABELS "integration;corpus" TIMEOUT 180)
+set(corpus_timeout 180)
+if(FILECRYPT_TEST_CPU_BASELINE)
+    set(corpus_timeout 360)
+endif()
+set_tests_properties(cli_directory_corpus PROPERTIES LABELS "integration;corpus" TIMEOUT ${corpus_timeout})
 if(WIN32)
     add_test(NAME cli_console_unicode COMMAND "${console_test_command}" "${filecrypt_command}")
     set_tests_properties(cli_console_unicode PROPERTIES LABELS "integration;smoke" TIMEOUT 75)

@@ -1,4 +1,5 @@
 #include "directory.hpp"
+#include <filecrypt/error.hpp>
 #include <filecrypt/io/directory.hpp>
 #include <algorithm>
 #include <limits>
@@ -166,17 +167,23 @@ std::size_t DirectoryReader::read(std::span<std::byte> bytes) {
     return 0;
 }
 
-/// 校验已认证并按需解压的归档，在受限暂存树完整恢复后发布目录。
-void restore_directory(io::OutputTransaction& payload, std::uint64_t index_length,
-    const std::filesystem::path& output, const directory::Limits& limits) {
+/// 校验已认证并按需解压的归档索引和数据范围，供验证与恢复共用。
+std::vector<format::DirectoryEntry> validate_directory_payload(io::OutputTransaction& payload,
+    std::uint64_t index_length, const directory::Limits& limits) {
     const auto length = payload.size();
-    if (length > limits.max_output_bytes || index_length > limits.max_index_bytes || index_length > length ||
+    if (length > limits.max_output_bytes || index_length > limits.max_index_bytes ||
         index_length > std::numeric_limits<std::size_t>::max()) throw std::length_error("Directory payload or Index exceeds policy");
+    if (index_length == 0 || index_length > length) throw FormatError("目录索引为空或超出载荷范围");
     crypto::SecureBytes index(static_cast<std::size_t>(index_length));
     payload.seek(0);
     read_exact(payload, std::as_writable_bytes(std::span(index)));
-    const auto entries = format::deserialize_index(std::as_bytes(std::span(index)), length - index_length, limits);
-    index.clear();
+    return format::deserialize_index(std::as_bytes(std::span(index)), length - index_length, limits);
+}
+
+/// 复用协议校验后应用目标名称规则，将恢复内容提交到私有目录树。
+void restore_directory(io::OutputTransaction& payload, std::uint64_t index_length,
+    const std::filesystem::path& output, const directory::Limits& limits) {
+    const auto entries = validate_directory_payload(payload, index_length, limits);
     for (std::size_t i = 1; i < entries.size(); ++i) io::validate_target_name(entries[i].name);
     // 解码器已验证 ID 有序、父节点存在；归档 ID 不一定连续，不能直接用作下标。
     auto parent_index = [&](std::uint32_t id) {

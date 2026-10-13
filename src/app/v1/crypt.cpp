@@ -46,7 +46,7 @@ crypto::Bytes crypto_bytes(std::span<const std::byte> bytes) {
 std::size_t read_stream(std::istream& input, std::span<std::byte> bytes) {
     input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (input.bad() || (input.fail() && !input.eof())) {
-        throw std::runtime_error("Input file read failed");
+        throw OperationError(ErrorCode::io_error, "输入文件读取失败");
     }
     return static_cast<std::size_t>(input.gcount());
 }
@@ -58,18 +58,58 @@ void write_cipher(crypto::CipherContext& cipher, io::OutputTransaction& output,
     output.write(std::as_bytes(std::span(part)));
 }
 
-/// 用固定大小安全缓冲区处理剩余输入流并写入受控临时输出。
-std::uint64_t process_stream(std::istream& input, crypto::CipherContext& cipher, io::OutputTransaction& output,
+/// 用固定大小安全缓冲区处理输入流；可写入受控临时输出或直接丢弃。
+std::uint64_t process_stream(std::istream& input, crypto::CipherContext& cipher, io::OutputTransaction* output,
     std::uint64_t max_output = std::numeric_limits<std::uint64_t>::max()) {
     crypto::SecureBytes buffer(65536);
     std::uint64_t written{};
     while (const auto count = read_stream(input, std::as_writable_bytes(std::span(buffer)))) {
         const auto part = cipher.update(std::span(buffer).first(count));
         if (part.size() > max_output - written) throw std::length_error("Directory output exceeds policy");
-        output.write(std::as_bytes(std::span(part)));
+        if (output) output->write(std::as_bytes(std::span(part)));
         written += part.size();
     }
     return written;
+}
+
+struct EncryptedPrefix {
+    format::Header header;
+    format::Metadata metadata;
+    crypto::Bytes aad;
+};
+
+/// 解密与验证共用前缀读取；AAD 始终使用磁盘原始字节。
+EncryptedPrefix read_encrypted_prefix(std::istream& input, const directory::Limits& limits) {
+    std::array<std::byte, format::header_size> bytes{};
+    io::read_exact(input, bytes);
+    const auto header = format::deserialize(bytes);
+    const auto layout = format::metadata_layout(header);
+    if (header.metadata_length != layout.metadata_size) throw FormatError("Metadata 长度不符合 v1 布局");
+    std::vector<std::byte> metadata_bytes(layout.metadata_size);
+    io::read_exact(input, metadata_bytes);
+    auto metadata = format::deserialize_metadata(header, metadata_bytes);
+    if (metadata.index_length) {
+        if (*metadata.index_length == 0) throw FormatError("目录索引长度不能为零");
+        if (*metadata.index_length > limits.max_index_bytes) throw std::length_error("Directory Index exceeds policy");
+    }
+    return {header, std::move(metadata), crypto_bytes(format::build_aad(bytes, metadata_bytes))};
+}
+
+/// 完整认证后返回；空输出表示只计数并丢弃明文，不创建临时文件。
+void authenticate_payload(std::istream& input, const EncryptedPrefix& prefix,
+    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
+    io::OutputTransaction* output, std::uint64_t max_output) {
+    const auto& metadata = prefix.metadata;
+    const auto& p = metadata.kdf_parameters;
+    const auto key = crypto::derive_key(password, crypto_bytes(metadata.salt),
+        {p.memory_cost_kib, p.time_cost, p.parallelism}, limits,
+        format::algorithm_definition(prefix.header.algorithm).key_size);
+    crypto::CipherContext cipher(cipher_algorithm(prefix.header.algorithm), crypto::Direction::decrypt,
+        key, crypto_bytes(metadata.nonce), prefix.aad);
+    const auto written = process_stream(input, cipher, output, max_output);
+    const auto final = cipher.finish(crypto_bytes(metadata.tag));
+    if (final.output.size() > max_output - written) throw std::length_error("Directory output exceeds policy");
+    if (output) output->write(std::as_bytes(std::span(final.output)));
 }
 }
 
@@ -136,7 +176,7 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
             [&](std::span<std::byte> bytes) { return read_stream(input, bytes); },
             [&](std::span<const std::byte> bytes) { write_cipher(cipher, output, bytes); });
     } else {
-        process_stream(input, cipher, output);
+        process_stream(input, cipher, &output);
     }
     // Tag 占位不参与 AAD；终结后只回写 Metadata，认证字节与初始构造保持一致。
     const auto final = cipher.finish();
@@ -150,15 +190,40 @@ void encrypt(const std::filesystem::path& path, const std::filesystem::path& des
     output.commit();
 }
 
+/// 验证完整消息及载荷格式，临时内容不允许提交为最终文件。
+void verify(std::istream& input, std::span<const std::uint8_t> password,
+    const crypto::KdfLimits& limits, const compression::DecompressionLimits& decompression_limits,
+    const directory::Limits& directory_limits) {
+    const auto prefix = read_encrypted_prefix(input, directory_limits);
+    const bool compressed = (prefix.header.flags & compressed_flag) != 0;
+    const bool is_directory = prefix.metadata.index_length.has_value();
+    auto payload = compressed || is_directory ? io::OutputTransaction::create_temporary() : nullptr;
+    const auto max_output = is_directory && !compressed ? directory_limits.max_output_bytes
+        : std::numeric_limits<std::uint64_t>::max();
+    authenticate_payload(input, prefix, password, limits, payload.get(), max_output);
+    if (compressed) {
+        // 解压器只接收完整认证后的内容；普通文件解压结果直接丢弃。
+        payload->seek(0);
+        auto restored = is_directory ? io::OutputTransaction::create_temporary() : nullptr;
+        auto effective_limits = decompression_limits;
+        if (is_directory) effective_limits.max_output_bytes =
+            std::min(effective_limits.max_output_bytes, directory_limits.max_output_bytes);
+        compression::decompress([&](std::span<std::byte> bytes) { return payload->read(bytes); },
+            [&](std::span<const std::byte> bytes) { if (restored) restored->write(bytes); }, effective_limits);
+        if (is_directory) (void)validate_directory_payload(*restored, *prefix.metadata.index_length, directory_limits);
+    } else if (is_directory) {
+        (void)validate_directory_payload(*payload, *prefix.metadata.index_length, directory_limits);
+    }
+}
+
 /// 校验 v1 前缀并认证完整消息，按需解压后才提交明文。
 std::filesystem::path decrypt(std::istream& input, const std::filesystem::path& destination,
     std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
     const compression::DecompressionLimits& decompression_limits, bool restore_extension,
     const directory::Limits& directory_limits) {
-    std::array<std::byte, format::header_size> header_bytes{};
-    io::read_exact(input, header_bytes);
-    const auto header = format::deserialize(header_bytes);
-    const auto layout = format::metadata_layout(header);
+    const auto prefix = read_encrypted_prefix(input, directory_limits);
+    const auto& header = prefix.header;
+    const auto& metadata = prefix.metadata;
     auto resolved_destination = restore_extension
         ? restore_file_extension(destination, header.file_type) : destination;
     const bool is_directory = (header.flags & directory_flag) != 0;
@@ -167,31 +232,10 @@ std::filesystem::path decrypt(std::istream& input, const std::filesystem::path& 
         if (resolved_destination.filename().empty() && resolved_destination != resolved_destination.root_path())
             resolved_destination = resolved_destination.parent_path();
     }
-    if (header.metadata_length != layout.metadata_size) {
-        throw std::invalid_argument("Invalid v1 Metadata length");
-    }
-    std::vector<std::byte> metadata_bytes(layout.metadata_size);
-    io::read_exact(input, metadata_bytes);
-    const auto metadata = format::deserialize_metadata(header, metadata_bytes);
-    if (is_directory && (*metadata.index_length > directory_limits.max_index_bytes || *metadata.index_length == 0))
-        throw std::length_error("Directory Index exceeds policy or is empty");
-    // 解密保留磁盘上的原始认证字节，不通过逻辑对象重新序列化 AAD。
-    const auto aad = crypto_bytes(format::build_aad(header_bytes, metadata_bytes));
-    const auto algorithm = cipher_algorithm(header.algorithm);
-    const auto& p = metadata.kdf_parameters;
-    const auto key = crypto::derive_key(password, crypto_bytes(metadata.salt),
-        {p.memory_cost_kib, p.time_cost, p.parallelism}, limits,
-        format::algorithm_definition(header.algorithm).key_size);
-    crypto::CipherContext cipher(algorithm, crypto::Direction::decrypt, key,
-        crypto_bytes(metadata.nonce), aad);
-    // update 的明文尚未认证，只能写入权限受限、尚未发布的临时事务。
     io::OutputTransaction output(resolved_destination);
     const auto max_output = is_directory && !(header.flags & compressed_flag)
         ? directory_limits.max_output_bytes : std::numeric_limits<std::uint64_t>::max();
-    const auto written = process_stream(input, cipher, output, max_output);
-    const auto final = cipher.finish(crypto_bytes(metadata.tag));
-    if (final.output.size() > max_output - written) throw std::length_error("Directory output exceeds policy");
-    output.write(std::as_bytes(std::span(final.output)));
+    authenticate_payload(input, prefix, password, limits, &output, max_output);
     if ((header.flags & compressed_flag) != 0) {
         // 只有 finish 验证通过，压缩载荷才允许进入解压器；中间事务始终不发布。
         output.seek(0);
