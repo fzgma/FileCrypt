@@ -42,10 +42,10 @@ std::array<std::byte, header_size> serialize(const Header& header) {
 /// 检查输入长度与 Magic 后读取 Header 的各个字段。
 Header deserialize(std::span<const std::byte> data) {
     if (data.size() < header_size) {
-        throw std::invalid_argument("FileCrypt header requires at least 32 bytes");
+        throw FormatError("FileCrypt Header 至少需要 32 字节");
     }
     if (!std::equal(header_magic.begin(), header_magic.end(), data.begin())) {
-        throw std::invalid_argument("Invalid FileCrypt header magic");
+        throw FormatError("FileCrypt Header 的 Magic 无效");
     }
 
     Header header;
@@ -58,11 +58,11 @@ Header deserialize(std::span<const std::byte> data) {
     return header;
 }
 
-/// 复用 Header 解析，将标准异常转换为统一 expected 错误值。
+/// 复用 Header 解析，将已分类格式错误转换为 expected；其他异常继续传播。
 std::expected<Header, Error> try_deserialize(std::span<const std::byte> data) {
     try {
         return deserialize(data);
-    } catch (const std::exception& error) {
+    } catch (const FormatError& error) {
         return std::unexpected(error_from_exception(error));
     }
 }

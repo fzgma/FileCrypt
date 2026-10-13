@@ -46,13 +46,14 @@ FileCrypt 支持 **文件与目录加解密、可选 Zstandard 压缩、公开�
 
 ### Linux
 
-下载 Linux 程序后赋予执行权限：
+下载 Linux 程序后：
 
 ```bash
-chmod +x filecrypt-linux-x86_64
-./filecrypt-linux-x86_64 -e photo.png backup
-./filecrypt-linux-x86_64 -d backup restored
-./filecrypt-linux-x86_64 -h
+mv filecrypt-linux-x86_64 filecrypt
+chmod +x filecrypt
+./filecrypt -e photo.png backup
+./filecrypt -d backup restored
+./filecrypt -h
 ```
 
 Linux 发布目标为 x86-64、glibc 2.34+；正式支持仍在维护的发行版，暂不支持 Alpine/musl。
@@ -196,6 +197,7 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 * [目录格式](docs/DIRECTORY_FORMAT.md)
 * [目录实现与运行策略](docs/DIRECTORY_IMPLEMENTATION.md)
 * [项目架构](docs/ARCHITECTURE.md)
+* [错误语义与 expected 试点评估](docs/ERROR_HANDLING.md)
 * [Linux 发布政策](docs/LINUX_RELEASE.md)
 * [Windows MSVC 发布](docs/MSVC_RELEASE.md)
 * [开发进度与待办](docs/TODO.md)

@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <expected>
+#include <filecrypt/error.hpp>
 #include <filecrypt/crypto/crypto.hpp>
 #include <filecrypt/compression/compression.hpp>
 #include <filecrypt/directory/limits.hpp>
@@ -41,6 +43,8 @@ struct EncryptOptions {
 
 /// 识别文件版本并调用相应流程读取公开信息。
 [[nodiscard]] FileInfo inspect_file(const std::filesystem::path& path);
+/// 复用公开信息读取，以 expected 返回已分类失败；分配或未知异常继续传播。
+[[nodiscard]] std::expected<FileInfo, Error> try_inspect_file(const std::filesystem::path& path);
 /// 根据明确版本和选项生成格式样本，不执行真实加密。
 void generate_sample(const std::filesystem::path& path, const SampleOptions& options);
 /// 将普通文件或目录加密到新路径，成功后提交最终输出。

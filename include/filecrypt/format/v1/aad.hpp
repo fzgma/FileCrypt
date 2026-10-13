@@ -13,7 +13,7 @@ namespace filecrypt::format::v1 {
 [[nodiscard]] std::vector<std::byte> build_aad(std::span<const std::byte> header_bytes,
     std::span<const std::byte> metadata_bytes);
 
-/// expected 试点接口：以值返回 AAD 格式校验错误。
+/// 以 expected 返回 AAD 的格式语义错误，分配或未知异常继续传播。
 [[nodiscard]] std::expected<std::vector<std::byte>, Error> try_build_aad(
     const Header& header, const Metadata& metadata);
 /// 校验原始认证字节并以 expected 返回 AAD 或格式错误。

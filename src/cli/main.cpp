@@ -134,6 +134,19 @@ void print_info(const std::filesystem::path& path, const filecrypt::app::FileInf
     std::println("认证状态：{}", info.authenticated ? "已验证" : "未验证");
 }
 
+/// 显示信息读取的语义类别并保留具体诊断，不改变其他命令的错误输出。
+void print_info_error(const filecrypt::Error& error) {
+    const char* category = "信息读取失败";
+    switch (error.code) {
+    case filecrypt::ErrorCode::invalid_argument: category = "参数不合法"; break;
+    case filecrypt::ErrorCode::unsupported_format: category = "不支持的格式"; break;
+    case filecrypt::ErrorCode::invalid_format: category = "文件结构不合法"; break;
+    case filecrypt::ErrorCode::io_error: category = "读取操作失败"; break;
+    default: break;
+    }
+    std::println(stderr, "错误：{}：{}", category, error.message);
+}
+
 /// 拒绝同一选项的重复或冲突写法。
 void claim_option(std::set<std::string_view>& seen, std::string_view name) {
     if (!seen.insert(name).second) {
@@ -383,7 +396,12 @@ int run_cli(int argc, char** argv) {
         const std::string_view command = argv[1];
         const auto path = argument_path(argv[2]);
         if ((command == "info" || command == "-i") && argc == 3) {
-            print_info(path, filecrypt::app::inspect_file(path));
+            const auto info = filecrypt::app::try_inspect_file(path);
+            if (!info) {
+                print_info_error(info.error());
+                return 1;
+            }
+            print_info(path, *info);
         } else if (command == "sample") {
             generate_sample(path, argc, argv);
         } else if (command == "encrypt" || command == "-e" || command == "decrypt" || command == "-d") {

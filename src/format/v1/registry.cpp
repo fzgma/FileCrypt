@@ -1,4 +1,5 @@
 #include <filecrypt/format/v1/registry.hpp>
+#include <filecrypt/error.hpp>
 
 #include <stdexcept>
 
@@ -36,7 +37,8 @@ const FileTypeDefinition& file_type_definition(std::uint16_t id) {
     for (const auto& type : file_types) {
         if (type.id == id) return type;
     }
-    throw std::invalid_argument("Unsupported or invalid v1 file type ID");
+    if (id == 0xFFFF) throw FormatError("v1 文件类型编号无效");
+    throw FormatError("不支持的 v1 文件类型编号", ErrorCode::unsupported_format);
 }
 
 /// 查询不含点的小写后缀，未登记时返回 Unknown 编号。
@@ -52,14 +54,14 @@ const AlgorithmDefinition& algorithm_definition(std::uint16_t id) {
     switch (id) {
     case 1: return aes;
     case 2: return xchacha;
-    default: throw std::invalid_argument("Unsupported v1 algorithm ID");
+    default: throw FormatError("不支持的 v1 加密算法编号", ErrorCode::unsupported_format);
     }
 }
 
 /// 根据协议编号返回 v1 KDF 的固定定义。
 const KdfDefinition& kdf_definition(std::uint16_t id) {
     if (id != argon2id.id) {
-        throw std::invalid_argument("Unsupported v1 KDF ID");
+        throw FormatError("不支持的 v1 密钥派生算法编号", ErrorCode::unsupported_format);
     }
     return argon2id;
 }
@@ -67,7 +69,7 @@ const KdfDefinition& kdf_definition(std::uint16_t id) {
 /// 根据协议编号返回 v1 压缩算法的固定定义。
 const CompressionDefinition& compression_definition(std::uint16_t id) {
     if (id != zstandard.id) {
-        throw std::invalid_argument("Unsupported v1 compression ID");
+        throw FormatError("不支持的 v1 压缩算法编号", ErrorCode::unsupported_format);
     }
     return zstandard;
 }

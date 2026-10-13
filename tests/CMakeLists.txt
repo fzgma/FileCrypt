@@ -30,7 +30,7 @@ foreach(test_target IN LISTS unit_test_targets)
 endforeach()
 add_custom_target(unit_tests DEPENDS ${unit_test_targets})
 
-add_executable(file_crypt_test app/file_crypt_test.cpp)
+add_executable(file_crypt_test app/file_crypt_test.cpp app/inspect_test.cpp)
 target_link_libraries(file_crypt_test PRIVATE FileCrypt::App FileCrypt::IO FileCrypt::Format)
 set_target_properties(file_crypt_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/integration")

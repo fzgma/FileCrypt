@@ -66,7 +66,7 @@ struct MetadataLayout {
 [[nodiscard]] Metadata deserialize_metadata(const Header& header,
     std::span<const std::byte> data);
 
-/// expected 试点接口：将 Metadata 格式错误转换为统一错误值。
+/// 以 expected 区分格式异常与不支持的内容，分配或未知异常继续传播。
 [[nodiscard]] std::expected<Metadata, Error> try_deserialize_metadata(const Header& header,
     std::span<const std::byte> data);
 

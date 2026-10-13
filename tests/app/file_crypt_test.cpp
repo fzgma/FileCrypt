@@ -10,6 +10,7 @@
 #include <string_view>
 #include <cstdio>
 #include "fixture.hpp"
+#include "inspect_test.hpp"
 
 namespace {
 using namespace filecrypt;
@@ -420,6 +421,7 @@ int main(int argc, char** argv) {
     try {
         check(argc == 2, "Missing test directory");
         const auto directory = test_fixture::create(argv[1]);
+        test_inspect::run(directory);
         file_tests(directory);
         compressed_file_tests(directory);
         transaction_tests(directory);

@@ -33,7 +33,7 @@ struct Header {
 // 输入不足 32 字节或 Magic 错误时抛出 std::invalid_argument。
 [[nodiscard]] Header deserialize(std::span<const std::byte> data);
 
-/// expected 试点接口：将格式错误转换为统一错误值，保留 deserialize 的兼容 API。
+/// 将格式失败返回为 invalid_format；保留原异常接口，分配或未知异常继续传播。
 [[nodiscard]] std::expected<Header, Error> try_deserialize(std::span<const std::byte> data);
 
 } // namespace filecrypt::format::v1

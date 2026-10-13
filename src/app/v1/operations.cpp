@@ -8,24 +8,31 @@
 namespace filecrypt::app::v1 {
 using namespace filecrypt::format::v1;
 
+namespace {
+/// 在信息读取边界将协议字段的意外 EOF 解释为容器截断，保留运行时异常基类。
+void read_info_field(std::istream& input, std::span<std::byte> bytes) {
+    try { io::read_exact(input, bytes); }
+    catch (const io::UnexpectedEndOfInput& error) {
+        throw OperationError(ErrorCode::invalid_format, error.what());
+    }
+}
+}
+
 /// 解析并校验 v1 前缀，将版本内部数据转换为公开展示结果。
 FileInfo inspect(std::istream& input) {
     std::array<std::byte, header_size> header_bytes{};
-    io::read_exact(input, header_bytes);
+    read_info_field(input, header_bytes);
     const auto header = deserialize(header_bytes);
     // 当前 Registry 仅支持 Argon2id 和零参数 Zstandard，长度由这组定义确定。
     // 在分配缓冲区前核对布局，避免信任磁盘中的任意 64 位长度。
     const auto layout = metadata_layout(header);
     if (header.metadata_length != layout.metadata_size) {
-        throw std::invalid_argument("Metadata 长度不符合当前 v1 布局");
+        throw FormatError("Metadata 长度不符合当前 v1 布局");
     }
     std::vector<std::byte> bytes(layout.metadata_size);
-    io::read_exact(input, bytes);
+    read_info_field(input, bytes);
     const auto metadata = deserialize_metadata(header, bytes);
-    const bool has_payload = input.peek() != std::char_traits<char>::eof();
-    if (input.bad()) {
-        throw std::runtime_error("载荷状态读取失败");
-    }
+    const bool has_payload = io::has_data(input);
     FileInfo info{};
     info.version = header.version;
     info.algorithm = algorithm_definition(header.algorithm).name;
