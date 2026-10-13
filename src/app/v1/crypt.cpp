@@ -3,8 +3,10 @@
 #include "directory.hpp"
 #include <filecrypt/format/v1/aad.hpp>
 #include <filecrypt/format/v1/registry.hpp>
+#include <filecrypt/format/v1/directory.hpp>
 #include <filecrypt/io/file.hpp>
 #include <filecrypt/io/output.hpp>
+#include "../../utils/reader_stream.hpp"
 #include <algorithm>
 #include <fstream>
 #include <limits>
@@ -78,6 +80,15 @@ struct EncryptedPrefix {
     crypto::Bytes aad;
 };
 
+/// 按已校验的版本参数派生载荷密钥，换密沿用源文件的 KDF 参数。
+crypto::SecureBytes derive_payload_key(const EncryptedPrefix& prefix,
+    std::span<const std::uint8_t> password, const crypto::KdfLimits& limits) {
+    const auto& p = prefix.metadata.kdf_parameters;
+    return crypto::derive_key(password, crypto_bytes(prefix.metadata.salt),
+        {p.memory_cost_kib, p.time_cost, p.parallelism}, limits,
+        format::algorithm_definition(prefix.header.algorithm).key_size);
+}
+
 /// 解密与验证共用前缀读取；AAD 始终使用磁盘原始字节。
 EncryptedPrefix read_encrypted_prefix(std::istream& input, const directory::Limits& limits) {
     std::array<std::byte, format::header_size> bytes{};
@@ -100,10 +111,7 @@ void authenticate_payload(std::istream& input, const EncryptedPrefix& prefix,
     std::span<const std::uint8_t> password, const crypto::KdfLimits& limits,
     io::OutputTransaction* output, std::uint64_t max_output) {
     const auto& metadata = prefix.metadata;
-    const auto& p = metadata.kdf_parameters;
-    const auto key = crypto::derive_key(password, crypto_bytes(metadata.salt),
-        {p.memory_cost_kib, p.time_cost, p.parallelism}, limits,
-        format::algorithm_definition(prefix.header.algorithm).key_size);
+    const auto key = derive_payload_key(prefix, password, limits);
     crypto::CipherContext cipher(cipher_algorithm(prefix.header.algorithm), crypto::Direction::decrypt,
         key, crypto_bytes(metadata.nonce), prefix.aad);
     const auto written = process_stream(input, cipher, output, max_output);
@@ -111,6 +119,141 @@ void authenticate_payload(std::istream& input, const EncryptedPrefix& prefix,
     if (final.output.size() > max_output - written) throw std::length_error("Directory output exceeds policy");
     if (output) output->write(std::as_bytes(std::span(final.output)));
 }
+
+/// 仅回读本次换密生成的密文；旧载荷已经认证，任何新认证失败仍禁止提交。
+class RekeyPayloadReader {
+public:
+    /// 输入已越过回读前缀，密钥和参数来自本次生成并核对过的新前缀。
+    RekeyPayloadReader(std::istream& input, const EncryptedPrefix& prefix,
+        std::span<const std::uint8_t> key)
+        : input_(input), cipher_(cipher_algorithm(prefix.header.algorithm), crypto::Direction::decrypt,
+            key, crypto_bytes(prefix.metadata.nonce), prefix.aad), tag_(crypto_bytes(prefix.metadata.tag)),
+          buffer_(65536) {}
+
+    /// 返回有界明文块；只有消费完最终认证结果后才返回 EOF。
+    std::size_t read(std::span<std::byte> bytes) {
+        if (bytes.empty()) return 0;
+        while (position_ == pending_.size()) {
+            if (finished_) return 0;
+            position_ = 0;
+            pending_.clear();
+            if (const auto count = read_stream(input_, std::as_writable_bytes(std::span(buffer_)))) {
+                pending_ = cipher_.update(std::span(buffer_).first(count));
+            } else {
+                try { pending_ = cipher_.finish(tag_).output; }
+                catch (const crypto::AuthenticationError&) {
+                    throw OperationError(ErrorCode::io_error, "新密文回读认证失败，未提交输出");
+                }
+                finished_ = true;
+            }
+        }
+        const auto count = std::min(bytes.size(), pending_.size() - position_);
+        const auto part = std::as_bytes(std::span(pending_).subspan(position_, count));
+        std::ranges::copy(part, bytes.begin());
+        position_ += count;
+        return count;
+    }
+private:
+    std::istream& input_;
+    crypto::CipherContext cipher_;
+    crypto::Bytes tag_;
+    crypto::SecureBytes buffer_, pending_;
+    std::size_t position_{};
+    bool finished_{};
+};
+
+/// 对本次生成的新密文回读、认证并检查载荷，解压结果只计数并保留有界目录索引。
+void validate_rekey_output(io::OutputTransaction& output, const EncryptedPrefix& expected,
+    std::span<const std::uint8_t> key, const RekeyOptions& options) {
+    output.seek(0);
+    utils::ReaderStreamBuffer buffer([&](std::span<std::byte> bytes) { return output.read(bytes); });
+    std::istream input(&buffer);
+    input.exceptions(std::ios::badbit);
+    const auto prefix = read_encrypted_prefix(input, options.directory_limits);
+    if (prefix.aad != expected.aad || prefix.metadata.tag != expected.metadata.tag)
+        throw OperationError(ErrorCode::io_error, "新密文前缀回读不一致，未提交输出");
+    RekeyPayloadReader payload(input, prefix, key);
+    const bool is_directory = prefix.metadata.index_length.has_value();
+    const auto index_length = prefix.metadata.index_length.value_or(0);
+    crypto::SecureBytes index;
+    if (index_length > index.max_size()) throw std::length_error("Directory Index exceeds container capacity");
+    std::uint64_t total{};
+    // 目录 File Data 的内容不需要保留；索引解析在新密文认证成功和总长度确定后进行。
+    auto consume = [&](std::span<const std::byte> bytes) {
+        if (!is_directory) return;
+        if (bytes.size() > options.directory_limits.max_output_bytes - total)
+            throw std::length_error("Directory output exceeds policy");
+        total += bytes.size();
+        const auto count = static_cast<std::size_t>(std::min<std::uint64_t>(bytes.size(), index_length - index.size()));
+        const auto part = bytes.first(count);
+        index.append_range(part | std::views::transform([](std::byte value) {
+            return std::to_integer<std::uint8_t>(value);
+        }));
+    };
+    if ((prefix.header.flags & compressed_flag) != 0) {
+        auto limits = options.decompression_limits;
+        if (is_directory) limits.max_output_bytes = std::min(limits.max_output_bytes, options.directory_limits.max_output_bytes);
+        // 本函数不接收外部文件：暂存内容由旧认证通过的载荷生成，受控句柄始终未释放。
+        compression::decompress([&](std::span<std::byte> bytes) { return payload.read(bytes); }, consume, limits);
+    } else {
+        crypto::SecureBytes bytes(65536);
+        while (const auto count = payload.read(std::as_writable_bytes(std::span(bytes))))
+            consume(std::as_bytes(std::span(bytes).first(count)));
+    }
+    if (is_directory) {
+        if (index.size() != index_length) throw FormatError("目录索引超出载荷范围");
+        (void)format::deserialize_index(std::as_bytes(std::span(index)), total - index_length, options.directory_limits);
+    }
+}
+}
+
+/// 将旧载荷逐块换密，旧认证成功后完成新标签并完整回读，始终不暂存明文文件。
+void rekey(std::istream& input, io::OutputTransaction& output,
+    std::span<const std::uint8_t> old_password, std::span<const std::uint8_t> new_password,
+    const RekeyOptions& options) {
+    const auto prefix = read_encrypted_prefix(input, options.directory_limits);
+    auto replacement = prefix;
+    auto& metadata = replacement.metadata;
+    const auto algorithm = cipher_algorithm(prefix.header.algorithm);
+    const auto salt = crypto::random_bytes(metadata.salt.size());
+    std::transform(salt.begin(), salt.end(), metadata.salt.begin(),
+        [](std::uint8_t value) { return static_cast<std::byte>(value); });
+    const auto nonce = crypto::random_bytes(metadata.nonce.size());
+    std::transform(nonce.begin(), nonce.end(), metadata.nonce.begin(),
+        [](std::uint8_t value) { return static_cast<std::byte>(value); });
+    std::ranges::fill(metadata.tag, std::byte{});
+    replacement.aad = crypto_bytes(format::build_aad(replacement.header, metadata));
+    auto old_key = derive_payload_key(prefix, old_password, options.limits);
+    const auto new_key = derive_payload_key(replacement, new_password, options.limits);
+    crypto::CipherContext decryptor(algorithm, crypto::Direction::decrypt, old_key,
+        crypto_bytes(prefix.metadata.nonce), prefix.aad);
+    old_key.clear();
+    crypto::CipherContext encryptor(algorithm, crypto::Direction::encrypt, new_key, nonce, replacement.aad);
+    output.write(format::serialize(replacement.header));
+    output.write(format::serialize_metadata(replacement.header, metadata));
+    const auto max_output = prefix.metadata.index_length && !(prefix.header.flags & compressed_flag)
+        ? options.directory_limits.max_output_bytes : std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t total{};
+    auto transfer = [&](std::span<const std::uint8_t> bytes) {
+        if (bytes.size() > max_output - total) throw std::length_error("Directory output exceeds policy");
+        total += bytes.size();
+        write_cipher(encryptor, output, std::as_bytes(bytes));
+    };
+    crypto::SecureBytes bytes(65536);
+    while (const auto count = read_stream(input, std::as_writable_bytes(std::span(bytes)))) {
+        const auto part = decryptor.update(std::span(bytes).first(count));
+        transfer(part);
+    }
+    // 旧 Tag 成功之前绝不结束新加密；失败时输出只含未发布且不完整的新密文。
+    const auto final_plaintext = decryptor.finish(crypto_bytes(prefix.metadata.tag));
+    transfer(final_plaintext.output);
+    const auto final = encryptor.finish();
+    output.write(std::as_bytes(std::span(final.output)));
+    std::transform(final.tag.begin(), final.tag.end(), metadata.tag.begin(),
+        [](std::uint8_t value) { return static_cast<std::byte>(value); });
+    output.seek(format::header_size);
+    output.write(format::serialize_metadata(replacement.header, metadata));
+    validate_rekey_output(output, replacement, new_key, options);
 }
 
 /// 构造真实 v1 前缀并流式加密，写回 Tag 后提交输出。

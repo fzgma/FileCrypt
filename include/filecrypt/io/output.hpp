@@ -6,10 +6,13 @@
 #include <span>
 
 namespace filecrypt::io {
+struct SourceSnapshot;
 class OutputTransaction {
 public:
     /// 在目标同目录排他创建受控临时文件，拒绝已有目标。
     explicit OutputTransaction(const std::filesystem::path& destination);
+    /// 为显式替换原文件创建同目录输出，提交前复核预期对象；不提供并发比较交换。
+    OutputTransaction(const std::filesystem::path& destination, const SourceSnapshot& expected);
     /// 在系统临时目录创建不可提交的受限暂存文件，关闭时自动删除。
     [[nodiscard]] static std::unique_ptr<OutputTransaction> create_temporary();
     /// 关闭文件并清理尚未提交的临时输出。
@@ -26,11 +29,11 @@ public:
     void seek(std::uint64_t offset);
     /// 查询临时载荷的实际长度，不改变当前读写位置。
     [[nodiscard]] std::uint64_t size() const;
-    /// 刷新并关闭输出，将其提交到不存在的目标路径。
+    /// 刷新并提交输出；仅带快照构造的事务允许替换通过复核的原文件。
     void commit();
 private:
     /// 共用权限与排他创建逻辑；临时模式的路径表示暂存目录。
-    OutputTransaction(const std::filesystem::path& path, bool temporary_only);
+    OutputTransaction(const std::filesystem::path& path, bool temporary_only, const SourceSnapshot* expected = nullptr);
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

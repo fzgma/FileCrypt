@@ -32,7 +32,7 @@ endforeach()
 add_custom_target(unit_tests DEPENDS ${unit_test_targets})
 
 add_executable(file_crypt_test app/file_crypt_test.cpp app/inspect_test.cpp)
-target_sources(file_crypt_test PRIVATE app/verify_test.cpp)
+target_sources(file_crypt_test PRIVATE app/verify_test.cpp app/rekey_test.cpp platform/output_replace_test.cpp)
 if(WIN32)
     target_sources(file_crypt_test PRIVATE platform/win32_resource_test.cpp)
 endif()

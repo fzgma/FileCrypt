@@ -94,11 +94,14 @@ void print_usage() {
         "  filecrypt decrypt|-d <输入.fcry> <输出路径> [资源上限]\n"
         "  filecrypt info|-i <文件路径>\n"
         "  filecrypt verify <加密文件路径> [资源上限]\n"
+        "  filecrypt rekey|-r <输入.fcry> <输出.fcry> [资源上限]\n"
+        "  filecrypt rekey|-r <输入.fcry> --replace [资源上限]\n"
         "  filecrypt password|-g [length 8-64] [charset alnum|readable|symbols]\n"
         "  filecrypt sample <文件路径> [algorithm|-a aes|xchacha] [directory] [compress|-z|no-compress]\n"
         "  filecrypt help|-h\n"
-        "完整名称不带横线，简写带单横线；加解密的前两个参数固定为输入、输出路径。\n"
-        "加密输出、解密输入未指定后缀时自动补 .fcry；已有后缀原样保留。\n"
+        "完整名称不带横线，简写带单横线；--replace 是换密时显式替换原文件的选项。\n"
+        "加解密的前两个参数固定为输入、输出路径；换密另存同理。\n"
+        "加密输出、解密输入、验证输入和换密路径未指定后缀时自动补 .fcry；已有后缀原样保留。\n"
         "解密输出未指定后缀时补上记录的扩展名（含 tar.gz 等复合后缀）；Unknown 不补。\n"
         "加密选项：algorithm|-a aes|xchacha（默认 aes），compress|-z 或 no-compress（默认）\n"
         "算法值也接受 aes-256-gcm 和 xchacha20-poly1305。\n"
@@ -113,6 +116,8 @@ void print_usage() {
         "解密自动读取算法和布局，不接受算法或压缩选项；拒绝覆盖已有输出。\n"
         "sample 仅生成 Header 与 Metadata 格式示例，不执行加密。\n");
     std::println("verify 输入一次密码，完整验证认证、压缩数据和目录结构，不生成恢复文件；压缩或目录验证需要临时空间。");
+    std::println("rekey 与 -r 完全等价，依次输入旧密码、新密码和确认新密码；默认另存，--replace 不接受输出路径。");
+    std::println("换密保留算法、压缩和 KDF 参数，验证成功后才发布结果；历史副本仍可使用旧密码打开。");
 }
 
 /// 将文件路径的末级文件名转换为 UTF-8 输出文本。
@@ -291,9 +296,14 @@ const OptionSpec* find_option(std::string_view name) {
 void parse_file_options(bool encrypting, int argc, char** argv,
     filecrypt::app::EncryptOptions& options,
     filecrypt::compression::DecompressionLimits& decompression_limits,
-    std::set<std::string_view>& seen, int first_option = 4) {
+    std::set<std::string_view>& seen, int first_option = 4, bool* replace = nullptr) {
     for (int i = first_option; i < argc; ++i) {
         const auto name = std::string_view(argv[i]);
+        if (name == "--replace" && replace != nullptr) {
+            claim_option(seen, "--replace");
+            *replace = true;
+            continue;
+        }
         const auto* spec = find_option(name);
         if (!spec || (spec->encrypt_only && !encrypting) ||
             (spec->decrypt_only && encrypting)) {
@@ -401,6 +411,79 @@ void verify_file(int argc, char** argv) {
     password.clear();
     std::println("验证通过。");
 }
+
+/// 在读取密码前检查可确定的路径错误；正式创建与提交仍由应用和平台层检查。
+void check_rekey_paths(const std::filesystem::path& input,
+    const std::filesystem::path& output, bool replace) {
+    if (input.empty() || output.empty()) {
+        throw std::invalid_argument("换密输入和输出路径不能为空");
+    }
+    std::error_code error;
+    const auto source = std::filesystem::symlink_status(input, error);
+    if (error && error != std::errc::no_such_file_or_directory) {
+        throw std::runtime_error("无法检查换密输入路径");
+    }
+    if (!std::filesystem::is_regular_file(source)) {
+        throw std::invalid_argument("换密输入必须是存在的普通文件，不能是符号链接");
+    }
+    if (replace) return;
+    if (std::filesystem::absolute(input).lexically_normal() ==
+        std::filesystem::absolute(output).lexically_normal()) {
+        throw std::invalid_argument("换密另存的输入与输出不能相同；替换原文件请使用 --replace");
+    }
+    const auto destination = std::filesystem::symlink_status(output, error);
+    if (error && error != std::errc::no_such_file_or_directory) {
+        throw std::runtime_error("无法检查换密输出路径");
+    }
+    if (std::filesystem::exists(destination)) {
+        throw std::invalid_argument("换密输出已存在，拒绝覆盖");
+    }
+    const auto parent = output.has_parent_path() ? output.parent_path() : std::filesystem::current_path();
+    if (!std::filesystem::is_directory(parent, error) || error) {
+        throw std::invalid_argument("换密输出的父目录不存在或不可访问");
+    }
+}
+
+/// 换密命令统一解析两种名称，读取三次密码后交给应用层流式换密。
+void rekey_file(int argc, char** argv) {
+    if (argc < 4) {
+        throw std::invalid_argument("换密需要指定输出文件，或使用 --replace 替换原文件");
+    }
+    bool replacing = false;
+    for (int i = 3; i < argc; ++i) {
+        if (std::string_view(argv[i]) == "--replace") replacing = true;
+    }
+    filecrypt::app::EncryptOptions parsed;
+    filecrypt::app::RekeyOptions options;
+    std::set<std::string_view> seen;
+    parse_file_options(false, argc, argv, parsed, options.decompression_limits, seen,
+        replacing ? 3 : 4, &options.replace);
+    options.limits = parsed.limits;
+    options.directory_limits = parsed.directory_limits;
+    if (seen.contains("max-output-bytes")) options.directory_limits.max_output_bytes =
+        std::min(options.directory_limits.max_output_bytes, options.decompression_limits.max_output_bytes);
+    const auto raw_input = argument_path(argv[2]);
+    const auto raw_output = replacing ? raw_input : argument_path(argv[3]);
+    if (raw_input.empty() || raw_output.empty()) throw std::invalid_argument("换密输入和输出路径不能为空");
+    const auto input = ciphertext_path(raw_input);
+    const auto output = replacing ? input : ciphertext_path(raw_output);
+    check_rekey_paths(input, output, replacing);
+    auto old_password = filecrypt::io::read_password("旧密码：");
+    if (old_password.empty()) throw std::invalid_argument("旧密码不能为空");
+    auto new_password = filecrypt::io::read_password("新密码：");
+    if (new_password.empty()) throw std::invalid_argument("新密码不能为空");
+    {
+        const auto confirmation = filecrypt::io::read_password("确认新密码：");
+        if (confirmation != new_password) {
+            throw std::invalid_argument("两次新密码不一致，未开始换密");
+        }
+    }
+    filecrypt::app::rekey_file(input, output, old_password, new_password, options);
+    old_password.clear();
+    new_password.clear();
+    const auto displayed = output.u8string();
+    std::println("换密完成：{}", std::string(displayed.begin(), displayed.end()));
+}
 } //namespace
 
 /// 分派完整或简写命令并将失败转换为非零退出码。
@@ -429,6 +512,8 @@ int run_cli(int argc, char** argv) {
             print_info(path, *info);
         } else if (command == "verify") {
             verify_file(argc, argv);
+        } else if (command == "rekey" || command == "-r") {
+            rekey_file(argc, argv);
         } else if (command == "sample") {
             generate_sample(path, argc, argv);
         } else if (command == "encrypt" || command == "-e" || command == "decrypt" || command == "-d") {

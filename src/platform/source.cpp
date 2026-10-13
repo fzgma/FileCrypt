@@ -1,4 +1,5 @@
 #include <filecrypt/io/source.hpp>
+#include "../utils/source_snapshot.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <vector>
@@ -20,43 +21,18 @@
 #endif
 
 namespace filecrypt::io {
-namespace {
-#ifdef _WIN32
-/// 从句柄提取普通文件或目录的身份与修改信息，拒绝 reparse point。
-SourceSnapshot from_handle(HANDLE handle) {
-    BY_HANDLE_FILE_INFORMATION info{};
-    if (!GetFileInformationByHandle(handle, &info) || (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
-        GetFileType(handle) != FILE_TYPE_DISK) throw std::runtime_error("Unsupported or changed source object");
-    // Win32 将大小、对象编号和时间拆为两个 DWORD，先扩宽再合并高低位。
-    auto pair = [](DWORD high, DWORD low) { return (std::uint64_t{high} << 32) | low; };
-    return {(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
-        pair(info.nFileSizeHigh, info.nFileSizeLow), info.dwVolumeSerialNumber,
-        pair(info.nFileIndexHigh, info.nFileIndexLow), pair(info.ftLastWriteTime.dwHighDateTime, info.ftLastWriteTime.dwLowDateTime),
-        pair(info.ftCreationTime.dwHighDateTime, info.ftCreationTime.dwLowDateTime)};
-}
-#else
-/// 从 stat 提取普通文件或目录的快照，拒绝链接与特殊对象。
-SourceSnapshot from_stat(const struct stat& info) {
-    if (!S_ISDIR(info.st_mode) && !S_ISREG(info.st_mode)) throw std::runtime_error("Unsupported source object; links and special files are rejected");
-    return {S_ISDIR(info.st_mode), static_cast<std::uint64_t>(info.st_size),
-        static_cast<std::uint64_t>(info.st_dev), static_cast<std::uint64_t>(info.st_ino),
-        static_cast<std::uint64_t>(info.st_mtim.tv_sec) * 1000000000 + info.st_mtim.tv_nsec,
-        static_cast<std::uint64_t>(info.st_ctim.tv_sec) * 1000000000 + info.st_ctim.tv_nsec};
-}
-#endif
-}
 
 /// 不跟随末级链接读取源对象快照，供扫描与读取前后复核。
 SourceSnapshot inspect_source(const std::filesystem::path& path) {
 #ifdef _WIN32
     const utils::UniqueFileHandle handle(CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
-    if (!handle) throw std::runtime_error("Cannot inspect source");
-    return from_handle(handle.get());
+    if (!handle) throw OperationError(ErrorCode::io_error, "无法检查源文件");
+    return utils::source_snapshot(handle.get());
 #else
     struct stat info{};
-    if (lstat(path.c_str(), &info) != 0) throw std::runtime_error("Cannot inspect source");
-    return from_stat(info);
+    if (lstat(path.c_str(), &info) != 0) throw OperationError(ErrorCode::io_error, "无法检查源文件");
+    return utils::source_snapshot(info);
 #endif
 }
 
@@ -73,9 +49,9 @@ void validate_source_path(const std::filesystem::path& path) {
 #ifdef _WIN32
     // UNC 的 server 前缀不是文件系统对象，首次检查从 share 组件开始。
     const bool unc = absolute.root_name().native().starts_with(L"\\\\");
-    if (!unc && !inspect_source(prefix).directory) throw std::invalid_argument("Invalid source root");
+    if (!unc && !inspect_source(prefix).directory) throw OperationError(ErrorCode::invalid_argument, "源路径的根目录无效");
 #else
-    if (!inspect_source(prefix).directory) throw std::invalid_argument("Invalid source root");
+    if (!inspect_source(prefix).directory) throw OperationError(ErrorCode::invalid_argument, "源路径的根目录无效");
 #endif
     const auto components = absolute.relative_path();
     for (auto component = components.begin(); component != components.end(); ++component) {
@@ -84,7 +60,7 @@ void validate_source_path(const std::filesystem::path& path) {
         const auto snapshot = inspect_source(prefix);
         auto next = component; ++next;
         if (next != components.end() && !snapshot.directory)
-            throw std::invalid_argument("Source ancestor is not a directory");
+            throw OperationError(ErrorCode::invalid_argument, "源路径的上级组件不是目录");
     }
 }
 
@@ -103,11 +79,11 @@ struct SourceFile::Impl {
     /// 从已打开的文件对象读取快照，不重新解析其路径。
     SourceSnapshot snapshot() const {
 #ifdef _WIN32
-        return from_handle(handle.get());
+        return utils::source_snapshot(handle.get());
 #else
         struct stat info{};
-        if (fstat(descriptor, &info) != 0) throw std::runtime_error("Cannot inspect open source");
-        return from_stat(info);
+        if (fstat(descriptor, &info) != 0) throw OperationError(ErrorCode::io_error, "无法检查已打开的源文件");
+        return utils::source_snapshot(info);
 #endif
     }
 };
@@ -126,8 +102,8 @@ SourceFile::SourceFile(const std::filesystem::path& path, const SourceSnapshot& 
     auto open_ancestor = [&] {
         utils::UniqueFileHandle ancestor(CreateFileW(ancestor_path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
             nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr));
-        if (!ancestor) throw std::runtime_error("Cannot lock source ancestor");
-        if (!from_handle(ancestor.get()).directory) throw std::runtime_error("Invalid source ancestor");
+        if (!ancestor) throw OperationError(ErrorCode::io_error, "无法保护源文件的父目录");
+        if (!utils::source_snapshot(ancestor.get()).directory) throw OperationError(ErrorCode::io_error, "源文件的父目录无效");
         // 扩容失败时局部所有者仍会关闭；成功后锁随容器存活。
         impl_->ancestors.push_back(std::move(ancestor));
     };
@@ -138,24 +114,24 @@ SourceFile::SourceFile(const std::filesystem::path& path, const SourceSnapshot& 
     }
     impl_->handle.reset(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
         FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
-    if (!impl_->handle) throw std::runtime_error("Cannot exclusively read source file");
+    if (!impl_->handle) throw OperationError(ErrorCode::io_error, "无法独占读取源文件，请检查文件占用和权限");
 #else
     // openat 锚定各级目录；并发替换路径组件也不能把读操作重定向到链接目标。
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
     int parent = open(absolute.root_path().c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (parent < 0) throw std::runtime_error("Cannot open source root");
+    if (parent < 0) throw OperationError(ErrorCode::io_error, "无法打开源文件的根目录");
     for (const auto& component : absolute.parent_path().relative_path()) {
         if (component.empty()) continue;
         const auto next = openat(parent, component.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
         close(parent); parent = next;
-        if (parent < 0) throw std::runtime_error("Cannot open source ancestor without following links");
+        if (parent < 0) throw OperationError(ErrorCode::io_error, "无法在不跟随链接的情况下打开源文件的父目录");
     }
     // 非阻塞打开避免替换成 FIFO 后卡住，随后通过句柄快照拒绝特殊对象。
     impl_->descriptor = openat(parent, absolute.filename().c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
     close(parent);
-    if (impl_->descriptor < 0) throw std::runtime_error("Cannot read source file without following links");
+    if (impl_->descriptor < 0) throw OperationError(ErrorCode::io_error, "无法在不跟随链接的情况下读取源文件");
 #endif
-    if (expected.directory || impl_->snapshot() != expected) throw std::runtime_error("Source changed after scan");
+    if (expected.directory || impl_->snapshot() != expected) throw OperationError(ErrorCode::io_error, "源文件在检查后已变化");
 }
 /// 释放文件句柄及为源路径持有的祖先目录句柄。
 SourceFile::~SourceFile() = default;
@@ -165,19 +141,25 @@ std::size_t SourceFile::read(std::span<std::byte> bytes) {
     const auto size = std::min(bytes.size(), std::size_t{65536});
 #ifdef _WIN32
     DWORD count{};
-    if (!ReadFile(impl_->handle.get(), bytes.data(), static_cast<DWORD>(size), &count, nullptr)) throw std::runtime_error("Source file read failed");
+    if (!ReadFile(impl_->handle.get(), bytes.data(), static_cast<DWORD>(size), &count, nullptr)) throw OperationError(ErrorCode::io_error, "源文件读取失败");
     return count;
 #else
     ssize_t count;
     do { count = ::read(impl_->descriptor, bytes.data(), size); } while (count < 0 && errno == EINTR);
-    if (count < 0) throw std::runtime_error("Source file read failed");
+    if (count < 0) throw OperationError(ErrorCode::io_error, "源文件读取失败");
     return static_cast<std::size_t>(count);
 #endif
 }
 
 /// 同时复核打开对象与原路径，检测内容变化和路径替换。
 void SourceFile::verify_unchanged() const {
-    if (impl_->snapshot() != impl_->expected || inspect_source(impl_->path) != impl_->expected)
-        throw std::runtime_error("Source file changed during encryption");
+    try {
+        if (impl_->snapshot() != impl_->expected || inspect_source(impl_->path) != impl_->expected)
+            throw OperationError(ErrorCode::io_error, "源文件在处理期间已变化");
+    } catch (const OperationError& error) {
+        if (error.code() == ErrorCode::invalid_argument)
+            throw OperationError(ErrorCode::io_error, "源文件在处理期间已变化");
+        throw;
+    }
 }
 }

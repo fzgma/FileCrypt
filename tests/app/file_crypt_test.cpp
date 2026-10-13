@@ -1,4 +1,6 @@
 #include "verify_test.hpp"
+#include "rekey_test.hpp"
+#include "../platform/output_replace_test.hpp"
 #include <filecrypt/app/operations.hpp>
 #include <filecrypt/io/file.hpp>
 #include <filecrypt/io/output.hpp>
@@ -427,6 +429,8 @@ int main(int argc, char** argv) {
         const auto directory = test_fixture::create(argv[1]);
         test_inspect::run(directory);
         test_verify::run(directory);
+        test_rekey::run(directory);
+        test_output_replace::run(directory);
 #ifdef _WIN32
         test_win32_resource::run(directory);
 #endif

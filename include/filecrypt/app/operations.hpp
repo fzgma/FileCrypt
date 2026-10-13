@@ -41,6 +41,13 @@ struct EncryptOptions {
     directory::Limits directory_limits{};
 };
 
+struct RekeyOptions {
+    bool replace{false};
+    crypto::KdfLimits limits{262144, 10, 16};
+    compression::DecompressionLimits decompression_limits{};
+    directory::Limits directory_limits{};
+};
+
 /// 识别文件版本并调用相应流程读取公开信息。
 [[nodiscard]] FileInfo inspect_file(const std::filesystem::path& path);
 /// 复用公开信息读取，以 expected 返回已分类失败；分配或未知异常继续传播。
@@ -50,6 +57,10 @@ void verify_file(const std::filesystem::path& path, std::span<const std::uint8_t
     const crypto::KdfLimits& limits = {262144, 10, 16},
     const compression::DecompressionLimits& decompression_limits = {},
     const directory::Limits& directory_limits = {});
+/// 流式换密并完整回读校验；默认另存，显式替换时输出必须为输入路径。
+void rekey_file(const std::filesystem::path& input, const std::filesystem::path& output,
+    std::span<const std::uint8_t> old_password, std::span<const std::uint8_t> new_password,
+    const RekeyOptions& options = {});
 /// 根据明确版本和选项生成格式样本，不执行真实加密。
 void generate_sample(const std::filesystem::path& path, const SampleOptions& options);
 /// 将普通文件或目录加密到新路径，成功后提交最终输出。

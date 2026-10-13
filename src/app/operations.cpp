@@ -2,12 +2,70 @@
 #include <filecrypt/format/detect.hpp>
 #include <filecrypt/io/file.hpp>
 #include <filecrypt/io/source.hpp>
+#include <filecrypt/io/output.hpp>
 #include "v1/operations.hpp"
+#include "../utils/reader_stream.hpp"
 #include <array>
 #include <fstream>
 #include <stdexcept>
 
 namespace filecrypt::app {
+/// 持有源句柄完成换密及回读；复核源状态后才发布或替换最终文件。
+void rekey_file(const std::filesystem::path& path, const std::filesystem::path& destination,
+    std::span<const std::uint8_t> old_password, std::span<const std::uint8_t> new_password,
+    const RekeyOptions& options) {
+    if (path.empty() || destination.empty() || old_password.empty() || new_password.empty())
+        throw OperationError(ErrorCode::invalid_argument, "输入、输出路径和密码不能为空");
+    compression::validate_limits(options.decompression_limits);
+    try {
+        // 先检查原始组件，避免路径归一化掩盖链接；替换只授权用户指定的原路径。
+        io::validate_source_path(path);
+        const auto source_path = std::filesystem::absolute(path).lexically_normal();
+        const auto output_path = std::filesystem::absolute(destination).lexically_normal();
+        if (options.replace && source_path != output_path)
+            throw OperationError(ErrorCode::invalid_argument, "替换模式的输出必须为输入路径");
+        if (!options.replace && (source_path == output_path ||
+                std::filesystem::symlink_status(destination).type() != std::filesystem::file_type::not_found))
+            throw OperationError(ErrorCode::output_conflict, "输出路径已存在或与输入相同");
+        const auto snapshot = io::inspect_source(source_path);
+        if (snapshot.directory)
+            throw OperationError(ErrorCode::invalid_argument, "换密输入必须是普通加密文件");
+        auto source = std::make_unique<io::SourceFile>(source_path, snapshot);
+        std::array<std::byte, format::identification_size> prefix{};
+        std::size_t position{};
+        while (position < prefix.size()) {
+            const auto count = source->read(std::span(prefix).subspan(position));
+            if (count == 0) throw io::UnexpectedEndOfInput();
+            position += count;
+        }
+        const auto version = format::detect_version(prefix);
+        if (version != 1) throw FormatError("不支持的 FileCrypt 格式版本", ErrorCode::unsupported_format);
+        utils::ReaderStreamBuffer buffer([&](std::span<std::byte> bytes) { return source->read(bytes); }, prefix);
+        std::istream input(&buffer);
+        input.exceptions(std::ios::badbit);
+        auto output = options.replace ? std::make_unique<io::OutputTransaction>(output_path, snapshot)
+            : std::make_unique<io::OutputTransaction>(output_path);
+        v1::rekey(input, *output, old_password, new_password, options);
+        source->verify_unchanged();
+        // Windows 源句柄禁止删除共享，必须先关闭；替换事务在提交前再次核对快照。
+        source.reset();
+        output->commit();
+    } catch (const crypto::AuthenticationError&) {
+        throw OperationError(ErrorCode::authentication_failed, "认证失败，旧密码错误或文件已损坏");
+    } catch (const FormatError& error) {
+        if (error.code() == ErrorCode::resource_limit)
+            throw OperationError(ErrorCode::resource_limit, "换密所需资源超过当前上限");
+        if (error.code() == ErrorCode::invalid_format) throw FormatError("加密文件格式或目录结构不合法");
+        throw;
+    } catch (const io::UnexpectedEndOfInput&) {
+        throw FormatError("加密文件被截断");
+    } catch (const std::length_error&) {
+        throw OperationError(ErrorCode::resource_limit, "换密所需资源超过当前上限");
+    } catch (const std::filesystem::filesystem_error&) {
+        throw OperationError(ErrorCode::io_error, "无法访问换密所需的输入或输出路径");
+    }
+}
+
 /// 在应用边界分类验证失败；不将资源上限或读取故障解释为文件损坏。
 void verify_file(const std::filesystem::path& path, std::span<const std::uint8_t> password,
     const crypto::KdfLimits& limits, const compression::DecompressionLimits& decompression_limits,
