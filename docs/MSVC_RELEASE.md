@@ -32,4 +32,4 @@ CLI 与目录流程同时覆盖中文、空格、emoji 路径、Windows 名称�
 
 推送 `v*` 标签触发[发布工作流](../.github/workflows/release.yml)。发布阶段从同次运行下载 Windows Artifact，将正式程序命名为 `filecrypt-windows-x86_64.exe`，纳入 `SHA256SUMS` 并上传 GitHub Release。发布工作流要求全部构建验证任务成功，任一失败均不发布。
 
-本轮目录素材、路径修复及缓存的 MSVC Actions 验证已由用户确认完成。后续改动的验证待办见 [TODO](TODO.md)；本地 MinGW 测试结果不替代 MSVC 验证。
+已核对 [v1.1.0 发布运行](https://github.com/fzgma/FileCrypt/actions/runs/38368477113)，提交 `f073b29` 的 MSVC 构建、全部测试与单文件分发检查通过，包含 verify 和 rekey。后续改动的验证待办见 [TODO](TODO.md)；本地 MinGW 测试结果不替代 MSVC 验证，已有结果也不覆盖尚未实现的 v2。

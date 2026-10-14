@@ -3,7 +3,7 @@
 状态：首批 Format 错误分类、信息读取接口和 CLI `info` 已实现；2026-10-13 用户确认提交 `2b2999a` 的 MSVC/Linux 远端验证全部通过。
 
 本文规定程序错误的含义及传递边界，并评估将 `expected` 接入 CLI `info` 的范围。
-它不修改 [v1 文件格式](FILE_FORMAT.md)、[协议边界](PROTOCOL_BOUNDARIES_V1.md)或认证与输出事务规则。
+它不修改 [v1 文件格式](v1/FILE_FORMAT.md)、[协议边界](v1/PROTOCOL_BOUNDARIES_V1.md)或认证与输出事务规则。
 实现进度与验证依据见 [TODO](TODO.md)。
 
 ## 1. 改造背景与当前实现

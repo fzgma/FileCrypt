@@ -7,6 +7,8 @@
 
 本文定义 FileCrypt 程序内部架构。
 
+现有版本规范与实现说明位于 [v1 文档](v1/README.md)，后续设计位于 [v2 文档](v2/README.md)。下文涉及具体加解密流程的实现状态仍指 v1；v2 尚未编码，不把其分块认证或密钥包装作为当前已有能力。
+
 `verify_file` 通过版本分发复用解密的前缀读取及完整认证，不提供最终输出路径。普通未压缩文件直接丢弃明文；压缩或目录载荷使用 IO 层不可提交的受限临时文件，认证成功后才解压、校验目录索引。目录协议校验由 `validate_directory_payload` 与恢复流程共用，目标文件系统的名称限制仅在实际恢复时应用。
 
 临时模式沿用输出事务的排他创建与权限规则，在系统临时目录暂存数据。Windows 使用关闭即删除，POSIX 创建后立即移除名称并保留句柄；临时模式禁止 `commit()`。既有解密仍通过最终输出事务提交结果。
@@ -120,8 +122,8 @@ Crypto 与 Compression 提供不依赖文件协议编号的基础能力，版本
 未认证明文只写入 `io::OutputTransaction`，`finish` 成功后才提交。
 启用压缩时，独立 `FileCrypt::Compression` 层在加密之前输出 Zstandard 帧，
 AEAD 计数压缩后的消息长度。压缩解密先认证临时载荷，再通过同一受控 IO 句柄回读并受限解压到第二个输出事务，
-完整解压成功后才提交；中间事务始终不发布。窗口和累计输出上限属于运行策略，见 [压缩实现](COMPRESSION.md)。
-目录模式由 `src/app/v1/directory.cpp` 扫描并流式提供 Index + File Data；Format 的 `directory.cpp` 负责独立编解码、UTF-8 单组件名称、树与连续数据校验。SourceFile 不跟随源链接并检查快照；DirectoryTransaction 提供受限暂存树和原子无覆盖提交。恢复流程先完整认证，按需解压，再校验 Index 和实际载荷长度、执行平台名称检查，全部恢复成功后发布。版本无关运行上限位于 `directory::Limits`，见 [目录实现](DIRECTORY_IMPLEMENTATION.md)。
+完整解压成功后才提交；中间事务始终不发布。窗口和累计输出上限属于运行策略，见 [压缩实现](v1/COMPRESSION.md)。
+目录模式由 `src/app/v1/directory.cpp` 扫描并流式提供 Index + File Data；Format 的 `directory.cpp` 负责独立编解码、UTF-8 单组件名称、树与连续数据校验。SourceFile 不跟随源链接并检查快照；DirectoryTransaction 提供受限暂存树和原子无覆盖提交。恢复流程先完整认证，按需解压，再校验 Index 和实际载荷长度、执行平台名称检查，全部恢复成功后发布。版本无关运行上限位于 `directory::Limits`，见 [目录实现](v1/DIRECTORY_IMPLEMENTATION.md)。
 
 输出事务在目标同目录排他创建临时文件，POSIX 权限为 0600，Windows 使用只允许
 所有者和 SYSTEM 的受保护 DACL。写入、定位、刷新与不覆盖目标的提交由平台层完成，
@@ -520,7 +522,7 @@ KDF implementation
 
 MetadataLayout 和 KDF 执行流程都使用 KDF Registry。
 
-Derived Key Size 从 Algorithm Definition 的 Key Size 得到，不作为 KDF 独立固定值，也不单独写入 Metadata。v1 的编号和字段长度统一以 `REGISTRY_V1.md` 为准。
+Derived Key Size 从 Algorithm Definition 的 Key Size 得到，不作为 KDF 独立固定值，也不单独写入 Metadata。v1 的编号和字段长度统一以 `v1/REGISTRY_V1.md` 为准。
 
 ---
 

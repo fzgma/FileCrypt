@@ -196,7 +196,7 @@ Linux 发布目标为 x86-64、glibc 2.34+；正式支持仍在维护的发行�
 | `max-output-bytes` | 16 GiB | 累计解压输出上限 |
 | `max-window-kib` | 65536 | 解压窗口上限 |
 
-这些是可调整的运行策略；实际 KDF 参数写入文件，解密时按记录值派生密钥。普通文件的解压上限约束压缩载荷，目录还受以下归档策略限制；更多说明见 [压缩实现](docs/COMPRESSION.md)。
+这些是可调整的运行策略；实际 KDF 参数写入文件，解密时按记录值派生密钥。普通文件的解压上限约束压缩载荷，目录还受以下归档策略限制；更多说明见 [压缩实现](docs/v1/COMPRESSION.md)。
 
 目录还提供以下可调上限，加密与解密均可指定：
 
@@ -240,7 +240,9 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 │   ├── io/             # 共享 IO
 │   └── platform/       # 平台文件操作与终端密码输入
 ├── tests/              # 单元、CLI 与文件流程测试
-├── docs/               # 协议、架构、发布政策与 TODO
+├── docs/               # 共用架构、发布政策与 TODO
+│   ├── v1/             # 现有协议与实现说明
+│   └── v2/             # 下一代格式设计草案
 ├── cmake/              # 依赖查找与构建配置
 └── .github/            # 构建、测试与发布工作流
 ```
@@ -260,13 +262,18 @@ Visual Studio 等多配置生成器构建时增加 `--config Release`，测试�
 
 ## 7. 文档
 
-* [文件格式](docs/FILE_FORMAT.md)
-* [扩展名及算法编号](docs/REGISTRY_V1.md)
-* [协议边界](docs/PROTOCOL_BOUNDARIES_V1.md)
-* [密码学设计](docs/CRYPTOGRAPHY.md)
-* [压缩实现](docs/COMPRESSION.md)
-* [目录格式](docs/DIRECTORY_FORMAT.md)
-* [目录实现与运行策略](docs/DIRECTORY_IMPLEMENTATION.md)
+当前程序实现 v1；v2 仍处于设计阶段，相关功能尚未实现。
+
+* [文档导航](docs/README.md)
+* [v1 文档目录](docs/v1/README.md)
+* [v2 设计与实施计划](docs/v2/README.md)
+* [文件格式](docs/v1/FILE_FORMAT.md)
+* [扩展名及算法编号](docs/v1/REGISTRY_V1.md)
+* [协议边界](docs/v1/PROTOCOL_BOUNDARIES_V1.md)
+* [密码学设计](docs/v1/CRYPTOGRAPHY.md)
+* [压缩实现](docs/v1/COMPRESSION.md)
+* [目录格式](docs/v1/DIRECTORY_FORMAT.md)
+* [目录实现与运行策略](docs/v1/DIRECTORY_IMPLEMENTATION.md)
 * [项目架构](docs/ARCHITECTURE.md)
 * [错误语义与 expected 试点评估](docs/ERROR_HANDLING.md)
 * [Linux 发布政策](docs/LINUX_RELEASE.md)

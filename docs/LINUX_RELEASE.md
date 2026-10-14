@@ -92,7 +92,7 @@ Artifact 下载不保留执行权限，解压后运行 `chmod +x filecrypt` 即�
 
 工作流使用 checkout v7.0.1、upload-artifact v7.0.2、download-artifact v8.0.1，均使用 Node 24。上传显式设置 `archive: true` 保留命名 ZIP Artifact，下载使用默认解压和摘要校验，只从同次运行获取产物。
 
-main 合并提交 `daf3efb` 的远端构建、发行版矩阵及 CPU 模拟验证已由用户确认全部通过。缓存命中、周期刷新和耗时比较需按对应运行记录确认；verify 新增功能的验证范围见 [TODO](TODO.md)。
+已核对 [v1.1.0 发布运行](https://github.com/fzgma/FileCrypt/actions/runs/38368477113)，提交 `f073b29` 的 Windows/Linux 构建验证和发布任务均通过，包含 verify、rekey 及 QEMU 素材测试 360 秒配置。后续默认分支缓存预热与跨标签复用尚待远端验证，见 [TODO](TODO.md)；该结果不覆盖尚未实现的 v2。
 
 ## 参考资料
 
