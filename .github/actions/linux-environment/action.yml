@@ -1,5 +1,5 @@
 name: Linux environment
-description: 构建并缓存 Linux 环境镜像，加载到当前 runner，不发布镜像。
+description: 构建 Linux 环境镜像，按运行引用复用缓存，按需加载到当前 runner，不发布镜像。
 inputs:
   kind:
     description: Dockerfile 类型（build 或 test）
@@ -16,21 +16,40 @@ inputs:
   install-qemu:
     description: 是否安装 CPU 基线复验工具
     default: '0'
+  load:
+    description: 是否将环境镜像加载到当前 runner
+    default: 'true'
+  cache-required:
+    description: 缓存导出失败时是否让任务失败
+    default: 'false'
 runs:
   using: composite
   steps:
+    - name: 记录环境缓存配置
+      shell: bash
+      env:
+        CACHE_SCOPE: filecrypt-linux-v1-${{ inputs.name }}
+        CACHE_WRITE: ${{ github.ref_type != 'tag' }}
+        ENVIRONMENT_REFRESH: ${{ inputs.refresh }}
+        BASE_IMAGE: ${{ inputs.base-image }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: |
+        printf 'ref=%s\ndefault_branch=%s\nscope=%s\ncache_write=%s\nrefresh=%s\nbase_image=%s\n' \
+          "$GITHUB_REF" "$DEFAULT_BRANCH" "$CACHE_SCOPE" "$CACHE_WRITE" "$ENVIRONMENT_REFRESH" "$BASE_IMAGE"
     - uses: docker/build-push-action@v7
       with:
         context: ${{ github.workspace }}/.github
         file: ${{ github.workspace }}/.github/docker/${{ inputs.kind }}.Dockerfile
         platforms: linux/amd64
         pull: true
-        load: true
+        load: ${{ inputs.load == 'true' }}
         push: false
+        outputs: ${{ inputs.load != 'true' && 'type=cacheonly' || '' }}
         tags: filecrypt-${{ inputs.name }}:local
         build-args: |
           BASE_IMAGE=${{ inputs.base-image }}
           ENVIRONMENT_REFRESH=${{ inputs.refresh }}
           INSTALL_QEMU=${{ inputs.install-qemu }}
         cache-from: type=gha,version=2,scope=filecrypt-linux-v1-${{ inputs.name }}
-        cache-to: type=gha,version=2,scope=filecrypt-linux-v1-${{ inputs.name }},mode=min,ignore-error=true
+        # 标签读取默认分支缓存；逐标签导出不能供下一标签复用，还会重复占用缓存空间。
+        cache-to: ${{ github.ref_type != 'tag' && format('type=gha,version=2,scope=filecrypt-linux-v1-{0},mode=min,ignore-error={1}', inputs.name, inputs.cache-required != 'true') || '' }}
